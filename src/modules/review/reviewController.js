@@ -1,31 +1,23 @@
-import { Review, User, Product } from '../../models/index.js';
+import { Review, Product, Seller, Order, sequelize } from '../../models/index.js';
 import { successResponse } from '../../utils/responseFormat.js';
 import { StatusCodes } from 'http-status-codes';
 import catchAsync from '../../utils/catchAsync.js';
 import ApiError from '../../utils/ApiError.js';
 
 /**
- * @desc Add product review
+ * @desc Create a review for a product/seller
  */
 export const createReview = catchAsync(async (req, res) => {
-  const { productId, rating, comment } = req.body;
   const userId = req.user.id;
+  const { productId, sellerId, rating, comment } = req.body;
 
-  // Check if product exists
-  const product = await Product.findByPk(productId);
-  if (!product) {
-    throw new ApiError(StatusCodes.NOT_FOUND, "Product not found");
-  }
-
-  // Prevent duplicate reviews
-  const existingReview = await Review.findOne({ where: { userId, productId } });
-  if (existingReview) {
-    throw new ApiError(StatusCodes.BAD_REQUEST, "You have already reviewed this product");
-  }
+  // Check if user has ordered this product/seller (optional but common)
+  // For now, allow simple review creation
 
   const review = await Review.create({
     userId,
     productId,
+    sellerId,
     rating,
     comment
   });
@@ -33,21 +25,19 @@ export const createReview = catchAsync(async (req, res) => {
   return successResponse({
     res,
     statusCode: StatusCodes.CREATED,
-    message: "Review added successfully",
+    message: "Review submitted successfully",
     data: review
   });
 });
 
 /**
- * @desc Get all reviews for a product
+ * @desc Get reviews for a product
  */
 export const getProductReviews = catchAsync(async (req, res) => {
   const { productId } = req.params;
-
   const reviews = await Review.findAll({
     where: { productId },
-    include: [{ model: User, attributes: ['user_name'] }],
-    order: [['createdAt', 'DESC']]
+    include: [{ model: User, attributes: ['id', 'name'] }]
   });
 
   return successResponse({

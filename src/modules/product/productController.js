@@ -14,8 +14,17 @@ export const createProduct = catchAsync(async (req, res) => {
     throw new ApiError(StatusCodes.FORBIDDEN, MSG.PRODUCT.SELLER_ONLY);
   }
 
+  // Handle uploaded files (mock URLs for now until Cloudinary is integrated)
+  let imageUrls = [];
+  if (req.files && req.files.length > 0) {
+    // Ideally, upload to Cloudinary here
+    // For now, simulate URLs
+    imageUrls = req.files.map((file, i) => `https://via.placeholder.com/400?text=Product+Image+${i + 1}`);
+  }
+
   const product = await Product.create({
     ...req.body,
+    images: imageUrls.length ? imageUrls : req.body.images,
     sellerId: req.user.id
   });
 
@@ -46,8 +55,8 @@ export const getAllProducts = catchAsync(async (req, res) => {
   const include = [
     { model: Category, attributes: ['name'] },
     { model: SubCategory, attributes: ['name'] },
-    { 
-      model: Seller, 
+    {
+      model: Seller,
       attributes: ['shop_name', 'location', 'latitude', 'longitude'],
       where: lat && lng ? sequelize.where(
         sequelize.fn(
@@ -61,7 +70,22 @@ export const getAllProducts = catchAsync(async (req, res) => {
     }
   ];
 
-  const products = await Product.findAll({ where, include });
+  const orderOptions = lat && lng ? [
+    [
+      sequelize.fn(
+        'ST_Distance_Sphere',
+        sequelize.fn('ST_GeomFromText', `POINT(${lng} ${lat})`),
+        sequelize.col('Seller.location')
+      ),
+      'ASC'
+    ]
+  ] : [];
+
+  const products = await Product.findAll({
+    where,
+    include,
+    order: orderOptions
+  });
 
   return successResponse({
     res,
@@ -78,7 +102,8 @@ export const getProductById = catchAsync(async (req, res) => {
   const product = await Product.findByPk(id, {
     include: [
       { model: Category, attributes: ['name'] },
-      { model: SubCategory, attributes: ['name'] }
+      { model: SubCategory, attributes: ['name'] },
+      { model: Seller, attributes: ['shop_name', 'address', 'latitude', 'longitude'] }
     ]
   });
 
@@ -148,7 +173,8 @@ export const searchProducts = catchAsync(async (req, res) => {
     },
     include: [
       { model: Category, attributes: ['name'] },
-      { model: SubCategory, attributes: ['name'] }
+      { model: SubCategory, attributes: ['name'] },
+      { model: Seller, attributes: ['shop_name', 'latitude', 'longitude'] }
     ]
   });
 
@@ -164,7 +190,8 @@ export const getSellerProducts = catchAsync(async (req, res) => {
     where: { sellerId: req.user.id },
     include: [
       { model: Category, attributes: ['name'] },
-      { model: SubCategory, attributes: ['name'] }
+      { model: SubCategory, attributes: ['name'] },
+      { model: Seller, attributes: ['shop_name'] }
     ]
   });
 
@@ -181,7 +208,8 @@ export const getProductsByCategory = catchAsync(async (req, res) => {
     where: { categoryId: id },
     include: [
       { model: Category, attributes: ['name'] },
-      { model: SubCategory, attributes: ['name'] }
+      { model: SubCategory, attributes: ['name'] },
+      { model: Seller, attributes: ['shop_name', 'latitude', 'longitude'] }
     ]
   });
 

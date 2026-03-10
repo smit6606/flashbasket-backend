@@ -15,6 +15,18 @@ const Review = sequelize.define('Review', {
   comment: {
     type: DataTypes.TEXT,
     allowNull: true,
+  },
+  userId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  productId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  sellerId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
   }
 }, {
   timestamps: true,

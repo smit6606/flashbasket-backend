@@ -10,6 +10,8 @@ import adminRoutes from '../modules/admin/adminRoutes.js';
 import orderRoutes from '../modules/order/orderRoutes.js';
 import reviewRoutes from '../modules/review/reviewRoutes.js';
 import deliveryRoutes from '../modules/delivery/deliveryRoutes.js';
+import paymentRoutes from '../modules/payment/paymentRoutes.js';
+import inventoryRoutes from '../modules/inventory/inventoryRoutes.js';
 
 const router = express.Router();
 
@@ -24,6 +26,8 @@ router.use('/admin', adminRoutes);
 router.use('/orders', orderRoutes);
 router.use('/reviews', reviewRoutes);
 router.use('/delivery', deliveryRoutes);
+router.use('/payment', paymentRoutes);
+router.use('/inventory', inventoryRoutes);
 
 // Protected routes section
 // router.use(authMiddleware); 

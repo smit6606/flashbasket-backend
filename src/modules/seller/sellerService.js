@@ -12,9 +12,9 @@ class SellerService {
     // Haversine formula to calculate distance in km
     const distanceQuery = `(
       6371 * acos(
-        cos(radians(:lat)) * cos(radians(latitude)) * 
-        cos(radians(longitude) - radians(:lng)) + 
-        sin(radians(:lat)) * sin(radians(latitude))
+        cos(radians(${lat})) * cos(radians(latitude)) * 
+        cos(radians(longitude) - radians(${lng})) + 
+        sin(radians(${lat})) * sin(radians(latitude))
       )
     )`;
 
@@ -28,8 +28,7 @@ class SellerService {
         sequelize.literal(distanceQuery),
         { [Op.lte]: distance }
       ),
-      order: sequelize.literal('distance ASC'),
-      replacements: { lat, lng }
+      order: sequelize.literal('distance ASC')
     });
   }
 

@@ -60,6 +60,10 @@ const DeliveryPartner = sequelize.define('DeliveryPartner', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
   },
+  rating: {
+    type: DataTypes.DECIMAL(3, 2),
+    defaultValue: 5.0,
+  },
 }, {
   timestamps: true,
   hooks: {

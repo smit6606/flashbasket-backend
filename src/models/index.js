@@ -40,7 +40,7 @@ Order.belongsTo(Seller, { foreignKey: 'sellerId' });
 
 // 7. DeliveryPartner <-> Order (One-to-Many)
 DeliveryPartner.hasMany(Order, { foreignKey: 'deliveryPartnerId' });
-Order.belongsTo(DeliveryPartner, { foreignKey: 'deliveryPartnerId' });
+Order.belongsTo(DeliveryPartner, { foreignKey: 'deliveryPartnerId', as: 'DeliveryPartner' });
 
 // 8. User <-> Cart (One-to-One)
 User.hasOne(Cart, { foreignKey: 'userId', onDelete: 'CASCADE' });
@@ -61,7 +61,7 @@ CartItem.belongsTo(Seller, { foreignKey: 'sellerId' });
 // 12. Order <-> Product (Many-to-Many via OrderItems)
 const OrderItem = sequelize.define('OrderItem', {
   quantity: { type: DataTypes.INTEGER, defaultValue: 1 },
-  price: { type: DataTypes.DECIMAL(10, 2) } 
+  price: { type: DataTypes.DECIMAL(10, 2) }
 });
 
 Order.belongsToMany(Product, { through: OrderItem });

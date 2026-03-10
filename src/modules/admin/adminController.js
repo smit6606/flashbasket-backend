@@ -54,7 +54,7 @@ export const updateSellerStatus = catchAsync(async (req, res) => {
   }
 
   await seller.update({ status });
-  
+
   return successResponse({
     res,
     message: `Seller status updated to ${status}`,
@@ -87,7 +87,86 @@ export const getAdminStats = catchAsync(async (req, res) => {
       totalUsers: userCount,
       totalSellers: sellerCount,
       totalPartners: partnerCount,
-      orders: orderStats
+      revenue: {
+        totalSales: parseFloat(orderStats?.totalSales || 0),
+        totalOrders: parseInt(orderStats?.totalOrders || 0),
+        totalCommission: parseFloat(orderStats?.totalCommission || 0)
+      }
     }
+  });
+});
+
+/**
+ * @desc Get Admin Commission Analytics
+ * GET /api/admin/commission
+ */
+export const getAdminCommissionStats = catchAsync(async (req, res) => {
+  const stats = await Order.findAll({
+    attributes: [
+      [sequelize.fn('DATE', sequelize.col('createdAt')), 'date'],
+      [sequelize.fn('SUM', sequelize.col('commissionAmount')), 'dailyCommission'],
+      [sequelize.fn('COUNT', sequelize.col('id')), 'orderCount']
+    ],
+    group: [sequelize.fn('DATE', sequelize.col('createdAt'))],
+    order: [[sequelize.fn('DATE', sequelize.col('createdAt')), 'DESC']],
+    limit: 30
+  });
+
+  return successResponse({
+    res,
+    message: "Commission stats fetched",
+    data: stats
+  });
+});
+
+/**
+ * @desc Get all orders (Admin)
+ * GET /api/admin/orders
+ */
+export const getAllOrders = catchAsync(async (req, res) => {
+  const orders = await Order.findAll({
+    include: [
+      { model: User, attributes: ['id', 'name', 'email'] },
+      { model: Seller, attributes: ['id', 'shop_name'] }
+    ],
+    order: [['createdAt', 'DESC']]
+  });
+
+  return successResponse({
+    res,
+    message: "All orders fetched",
+    data: orders
+  });
+});
+
+/**
+ * @desc Assign Delivery Partner to Order
+ * PUT /api/admin/assign-delivery
+ */
+export const assignDeliveryPartner = catchAsync(async (req, res) => {
+  const { orderId, partnerId } = req.body;
+
+  const order = await Order.findByPk(orderId);
+  if (!order) {
+    throw new ApiError(StatusCodes.NOT_FOUND, "Order not found");
+  }
+
+  const partner = await DeliveryPartner.findByPk(partnerId);
+  if (!partner || !partner.isAvailable) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, "Delivery partner not found or unavailable");
+  }
+
+  await order.update({
+    deliveryPartnerId: partnerId,
+    status: 'confirmed' // Or keep existing if already confirmed
+  });
+
+  // Optionally mark partner as busy
+  // await partner.update({ isAvailable: false });
+
+  return successResponse({
+    res,
+    message: "Delivery partner assigned successfully",
+    data: order
   });
 });

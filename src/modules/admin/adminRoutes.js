@@ -1,10 +1,13 @@
 import express from 'express';
-import { 
-  getAllUsers, 
-  getAllSellers, 
-  getAllPartners, 
-  updateSellerStatus, 
-  getAdminStats 
+import {
+  getAllPartners,
+  updateSellerStatus,
+  getAdminCommissionStats,
+  getAllOrders,
+  assignDeliveryPartner,
+  getAdminStats,
+  getAllUsers,
+  getAllSellers
 } from './adminController.js';
 import protect, { restrictTo } from '../../middlewares/auth.js';
 
@@ -18,6 +21,9 @@ router.get('/stats', getAdminStats);
 router.get('/users', getAllUsers);
 router.get('/sellers', getAllSellers);
 router.get('/partners', getAllPartners);
+router.get('/orders', getAllOrders);
+router.get('/commission', getAdminCommissionStats);
+router.put('/assign-delivery', assignDeliveryPartner);
 router.patch('/seller/:id/status', updateSellerStatus);
 
 export default router;

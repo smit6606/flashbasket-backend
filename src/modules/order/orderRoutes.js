@@ -1,10 +1,12 @@
 import express from 'express';
-import { 
-  placeOrder, 
-  getUserOrders, 
-  getSellerOrders, 
-  updateOrderStatus 
+import {
+  placeOrder,
+  getUserOrders,
+  getSellerOrders,
+  updateOrderStatus,
+  trackOrder
 } from './orderController.js';
+import { getUserInvoice, getSellerInvoice } from './invoiceController.js';
 import protect, { restrictTo } from '../../middlewares/auth.js';
 
 const router = express.Router();
@@ -12,11 +14,14 @@ const router = express.Router();
 router.use(protect);
 
 // User routes
-router.post('/place', restrictTo('user'), placeOrder);
+router.post('/create', restrictTo('user'), placeOrder);
 router.get('/user', restrictTo('user'), getUserOrders);
+router.get('/track/:orderNumber', trackOrder);
+router.get('/:orderId/invoice', getUserInvoice);
 
 // Seller routes
 router.get('/seller', restrictTo('seller'), getSellerOrders);
+router.get('/seller/:orderId/invoice', restrictTo('seller'), getSellerInvoice);
 
 // Shared Admin/Seller/Partner routes
 router.patch('/:id/status', updateOrderStatus);

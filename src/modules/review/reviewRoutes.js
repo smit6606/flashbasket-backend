@@ -8,6 +8,6 @@ router.get('/product/:productId', getProductReviews);
 
 // Protected routes
 router.use(protect);
-router.post('/add', createReview);
+router.post('/', createReview);
 
 export default router;

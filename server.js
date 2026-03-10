@@ -10,8 +10,8 @@ dotenv.config();
 
 const startServer = async () => {
   await connectDB();
-  await sequelize.sync({ alter: true });
-  
+  await sequelize.sync({ alter: false });
+
   // Ensure Spatial Indexes exist (Sequelize doesn't always create these via sync)
   try {
     await sequelize.query('ALTER TABLE Sellers ADD SPATIAL INDEX(location);');
@@ -24,7 +24,7 @@ const startServer = async () => {
   console.log("✅ Models synchronized.");
 
   const app = express();
-  
+
   // Middlewares
   app.use(cors());
   app.use(express.json());

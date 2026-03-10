@@ -11,6 +11,10 @@ const Order = sequelize.define('Order', {
     type: DataTypes.STRING,
     unique: true,
   },
+  groupId: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   totalAmount: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
@@ -31,6 +35,10 @@ const Order = sequelize.define('Order', {
     type: DataTypes.ENUM('unpaid', 'paid', 'failed', 'refunded'),
     defaultValue: 'unpaid',
   },
+  paymentMethod: {
+    type: DataTypes.ENUM('stripe', 'cod'),
+    defaultValue: 'cod',
+  },
   deliveryAddress: {
     type: DataTypes.JSON,
     allowNull: false,
@@ -45,6 +53,10 @@ const Order = sequelize.define('Order', {
   },
   location: {
     type: DataTypes.GEOMETRY('POINT'),
+    allowNull: true,
+  },
+  deliveryPartnerId: {
+    type: DataTypes.INTEGER,
     allowNull: true,
   },
 }, {

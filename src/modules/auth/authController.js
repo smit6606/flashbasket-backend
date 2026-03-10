@@ -54,6 +54,7 @@ export const register = catchAsync(async (req, res) => {
 
   const newUser = await authService.register(role, userData);
   const userResponse = newUser.toJSON();
+  userResponse.role = role;
   delete userResponse.password;
 
   return successResponse({
@@ -83,6 +84,7 @@ export const login = catchAsync(async (req, res) => {
 
   const token = signToken(user.id, role);
   const userResponse = user.toJSON();
+  userResponse.role = role;
   delete userResponse.password;
 
   return successResponse({

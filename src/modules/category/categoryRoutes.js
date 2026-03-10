@@ -6,9 +6,9 @@ const router = express.Router();
 
 router.get('/', getCategories);
 
-// Admin only routes
+// Admin and Seller routes
 router.use(protect);
-router.post('/', restrictTo('admin'), createCategory);
-router.post('/subcategory', restrictTo('admin'), createSubCategory);
+router.post('/', restrictTo('admin', 'seller'), createCategory);
+router.post('/subcategory', restrictTo('admin', 'seller'), createSubCategory);
 
 export default router;

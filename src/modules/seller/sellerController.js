@@ -41,6 +41,24 @@ export const fetchAllSellers = catchAsync(async (req, res) => {
 });
 
 /**
+ * @desc Get single seller by ID
+ */
+export const getSellerById = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const seller = await sellerService.getSellerById(id);
+  
+  if (!seller) {
+    throw new ApiError(StatusCodes.NOT_FOUND, "Seller not found");
+  }
+
+  return successResponse({
+    res,
+    message: "Seller fetched successfully",
+    data: seller
+  });
+});
+
+/**
  * @desc Update Seller Profile (Location, Shop Name, etc.)
  */
 export const updateSellerProfile = catchAsync(async (req, res) => {
@@ -69,7 +87,6 @@ export const updateSellerProfile = catchAsync(async (req, res) => {
 
 /**
  * @desc Seller Dashboard Stats
- * GET /api/seller/dashboard
  */
 export const getSellerDashboardStats = catchAsync(async (req, res) => {
   const sellerId = req.user.id;
@@ -80,30 +97,69 @@ export const getSellerDashboardStats = catchAsync(async (req, res) => {
       attributes: [
         [sequelize.fn('COUNT', sequelize.col('id')), 'totalOrders'],
         [sequelize.fn('SUM', sequelize.col('totalAmount')), 'totalRevenue'],
-        [sequelize.fn('SUM', sequelize.col('deliveryFee')), 'deliveryFees']
       ],
       raw: true
     }),
     Product.count({ where: { sellerId } })
   ]);
 
-  // Calculate active orders
+  // Top Selling Products
+  const topProducts = await sequelize.query(`
+    SELECT p.productName, SUM(oi.quantity) as totalSold, SUM(oi.quantity * oi.price) as revenue
+    FROM Products p
+    JOIN OrderItems oi ON p.id = oi.ProductId
+    JOIN Orders o ON oi.OrderId = o.id
+    WHERE o.sellerId = ${sellerId} AND o.status = 'completed'
+    GROUP BY p.id
+    ORDER BY totalSold DESC
+    LIMIT 5
+  `, { type: sequelize.QueryTypes.SELECT });
+
+  // Least Selling Products
+  const leastProducts = await sequelize.query(`
+    SELECT p.productName, SUM(COALESCE(oi.quantity, 0)) as totalSold
+    FROM Products p
+    LEFT JOIN OrderItems oi ON p.id = oi.ProductId
+    LEFT JOIN Orders o ON oi.OrderId = o.id AND o.status = 'completed'
+    WHERE p.sellerId = ${sellerId}
+    GROUP BY p.id
+    ORDER BY totalSold ASC
+    LIMIT 5
+  `, { type: sequelize.QueryTypes.SELECT });
+
+  // Monthly Sales Revenue (last 6 months)
+  const monthlySales = await sequelize.query(`
+    SELECT 
+      DATE_FORMAT(createdAt, '%b') as month,
+      SUM(totalAmount) as revenue
+    FROM Orders
+    WHERE sellerId = ${sellerId} AND status = 'completed'
+      AND createdAt >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+    GROUP BY month
+    ORDER BY MIN(createdAt) ASC
+  `, { type: sequelize.QueryTypes.SELECT });
+
   const activeOrders = await Order.count({
     where: {
       sellerId,
-      status: ['pending', 'confirmed', 'preparing', 'out-for-delivery']
+      status: ['pending', 'preparing', 'out-for-delivery', 'shipped', 'arrived']
     }
   });
 
   return successResponse({
     res,
-    message: "Seller dashboard stats fetched",
+    message: "Seller analytics fetched",
     data: {
       stats: {
         totalOrders: parseInt(orderStats?.totalOrders || 0),
         totalRevenue: parseFloat(orderStats?.totalRevenue || 0),
         totalProducts: productCount,
         activeOrders
+      },
+      charts: {
+        topProducts,
+        leastProducts,
+        monthlySales
       }
     }
   });

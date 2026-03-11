@@ -5,6 +5,7 @@ import {
   getAdminCommissionStats,
   getAllOrders,
   assignDeliveryPartner,
+  dispatchOrderToSeller,
   getAdminStats,
   getAllUsers,
   getAllSellers
@@ -24,6 +25,7 @@ router.get('/partners', getAllPartners);
 router.get('/orders', getAllOrders);
 router.get('/commission', getAdminCommissionStats);
 router.put('/assign-delivery', assignDeliveryPartner);
+router.put('/dispatch-order/:orderId', dispatchOrderToSeller);
 router.patch('/seller/:id/status', updateSellerStatus);
 
 export default router;

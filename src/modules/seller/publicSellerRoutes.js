@@ -1,5 +1,5 @@
 import express from 'express';
-import { getNearbySellers, fetchAllSellers } from './sellerController.js';
+import { getNearbySellers, fetchAllSellers, getSellerById } from './sellerController.js';
 
 const router = express.Router();
 
@@ -13,5 +13,9 @@ router.get('/nearby', getNearbySellers);
  * @desc List all sellers
  */
 router.get('/', fetchAllSellers);
+/**
+ * @desc Get single seller by ID
+ */
+router.get('/:id', getSellerById);
 
 export default router;

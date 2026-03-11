@@ -3,7 +3,9 @@ import {
   placeOrder,
   getUserOrders,
   getSellerOrders,
+  getPartnerOrders,
   updateOrderStatus,
+  resendOtp,
   trackOrder
 } from './orderController.js';
 import { getUserInvoice, getSellerInvoice } from './invoiceController.js';
@@ -22,6 +24,10 @@ router.get('/:orderId/invoice', getUserInvoice);
 // Seller routes
 router.get('/seller', restrictTo('seller'), getSellerOrders);
 router.get('/seller/:orderId/invoice', restrictTo('seller'), getSellerInvoice);
+
+// Partner routes
+router.get('/partner', restrictTo('delivery'), getPartnerOrders);
+router.post('/:id/resend-otp', restrictTo('delivery'), resendOtp);
 
 // Shared Admin/Seller/Partner routes
 router.patch('/:id/status', updateOrderStatus);

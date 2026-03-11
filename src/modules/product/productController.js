@@ -6,6 +6,8 @@ import { Op } from 'sequelize';
 import catchAsync from '../../utils/catchAsync.js';
 import ApiError from '../../utils/ApiError.js';
 
+import { uploadToCloudinary, uploadMultipleToCloudinary } from '../../utils/cloudinary.js';
+
 /**
  * @desc Create Product (Sellers Only)
  */
@@ -14,12 +16,10 @@ export const createProduct = catchAsync(async (req, res) => {
     throw new ApiError(StatusCodes.FORBIDDEN, MSG.PRODUCT.SELLER_ONLY);
   }
 
-  // Handle uploaded files (mock URLs for now until Cloudinary is integrated)
+  // Handle uploaded files to Cloudinary
   let imageUrls = [];
   if (req.files && req.files.length > 0) {
-    // Ideally, upload to Cloudinary here
-    // For now, simulate URLs
-    imageUrls = req.files.map((file, i) => `https://via.placeholder.com/400?text=Product+Image+${i + 1}`);
+    imageUrls = await uploadMultipleToCloudinary(req.files.map(f => f.buffer));
   }
 
   const product = await Product.create({
@@ -40,8 +40,10 @@ export const createProduct = catchAsync(async (req, res) => {
  * @desc Get All Products (Public) with Filtering
  */
 export const getAllProducts = catchAsync(async (req, res) => {
-  const { categoryId, minPrice, maxPrice, rating, lat, lng, radius } = req.query;
-  const where = {};
+  const { categoryId, minPrice, maxPrice, rating, lat, lng, radius, sellerId } = req.query;
+  const where = { status: 'active' };
+
+  if (sellerId) where.sellerId = sellerId;
 
   if (minPrice || maxPrice) {
     where.price = {};
@@ -57,7 +59,7 @@ export const getAllProducts = catchAsync(async (req, res) => {
     { model: SubCategory, attributes: ['name'] },
     {
       model: Seller,
-      attributes: ['shop_name', 'location', 'latitude', 'longitude'],
+      attributes: ['id', 'shop_name', 'location', 'latitude', 'longitude'],
       where: lat && lng ? sequelize.where(
         sequelize.fn(
           'ST_Distance_Sphere',
@@ -103,7 +105,7 @@ export const getProductById = catchAsync(async (req, res) => {
     include: [
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },
-      { model: Seller, attributes: ['shop_name', 'address', 'latitude', 'longitude'] }
+      { model: Seller, attributes: ['id', 'shop_name', 'address', 'latitude', 'longitude'] }
     ]
   });
 
@@ -131,7 +133,25 @@ export const updateProduct = catchAsync(async (req, res) => {
     throw new ApiError(StatusCodes.NOT_FOUND, MSG.PRODUCT.NOT_FOUND);
   }
 
-  await product.update(req.body);
+  let finalImages = [];
+  const { existingImages } = req.body;
+
+  if (existingImages) {
+    finalImages = Array.isArray(existingImages) ? existingImages : [existingImages];
+  }
+
+  if (req.files && req.files.length > 0) {
+    const newImages = await uploadMultipleToCloudinary(req.files.map(f => f.buffer));
+    finalImages = [...finalImages, ...newImages];
+  } else if (!existingImages) {
+    // Fallback to current images if no image-related data was sent (optional check depends on UI)
+    finalImages = product.images;
+  }
+
+  await product.update({
+    ...req.body,
+    images: finalImages
+  });
 
   return successResponse({
     res,
@@ -166,6 +186,7 @@ export const searchProducts = catchAsync(async (req, res) => {
   const { q } = req.query;
   const products = await Product.findAll({
     where: {
+      status: 'active',
       [Op.or]: [
         { productName: { [Op.substring]: q } },
         { description: { [Op.substring]: q } }
@@ -174,7 +195,7 @@ export const searchProducts = catchAsync(async (req, res) => {
     include: [
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },
-      { model: Seller, attributes: ['shop_name', 'latitude', 'longitude'] }
+      { model: Seller, attributes: ['id', 'shop_name', 'latitude', 'longitude'] }
     ]
   });
 
@@ -191,7 +212,7 @@ export const getSellerProducts = catchAsync(async (req, res) => {
     include: [
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },
-      { model: Seller, attributes: ['shop_name'] }
+      { model: Seller, attributes: ['id', 'shop_name'] }
     ]
   });
 
@@ -205,11 +226,11 @@ export const getSellerProducts = catchAsync(async (req, res) => {
 export const getProductsByCategory = catchAsync(async (req, res) => {
   const { id } = req.params;
   const products = await Product.findAll({
-    where: { categoryId: id },
+    where: { categoryId: id, status: 'active' },
     include: [
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },
-      { model: Seller, attributes: ['shop_name', 'latitude', 'longitude'] }
+      { model: Seller, attributes: ['id', 'shop_name', 'latitude', 'longitude'] }
     ]
   });
 

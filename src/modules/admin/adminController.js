@@ -126,8 +126,9 @@ export const getAdminCommissionStats = catchAsync(async (req, res) => {
 export const getAllOrders = catchAsync(async (req, res) => {
   const orders = await Order.findAll({
     include: [
-      { model: User, attributes: ['id', 'name', 'email'] },
-      { model: Seller, attributes: ['id', 'shop_name'] }
+      { model: User, attributes: ['id', 'user_name', 'email'] },
+      { model: Seller, attributes: ['id', 'shop_name'] },
+      { model: DeliveryPartner, as: 'DeliveryPartner', attributes: ['id', 'user_name', 'name'] }
     ],
     order: [['createdAt', 'DESC']]
   });
@@ -158,7 +159,7 @@ export const assignDeliveryPartner = catchAsync(async (req, res) => {
 
   await order.update({
     deliveryPartnerId: partnerId,
-    status: 'confirmed' // Or keep existing if already confirmed
+    status: 'assigned' 
   });
 
   // Optionally mark partner as busy
@@ -167,6 +168,36 @@ export const assignDeliveryPartner = catchAsync(async (req, res) => {
   return successResponse({
     res,
     message: "Delivery partner assigned successfully",
+    data: order
+  });
+});
+
+/**
+ * @desc Admin Sends Order to Seller (Dispatches)
+ * PUT /api/admin/dispatch-order/:orderId
+ */
+export const dispatchOrderToSeller = catchAsync(async (req, res) => {
+  const { orderId } = req.params;
+
+  const order = await Order.findByPk(orderId);
+  if (!order) {
+    throw new ApiError(StatusCodes.NOT_FOUND, "Order not found");
+  }
+
+  if (order.status !== 'accepted-by-partner') {
+    throw new ApiError(StatusCodes.BAD_REQUEST, "Delivery partner must accept the order before dispatching.");
+  }
+
+  await order.update({ status: 'ready-to-ship' });
+
+  // Trigger Notification
+  import('../../utils/notificationService.js').then(({ notifyOrderStatusChange }) => {
+    notifyOrderStatusChange(order);
+  }).catch(err => console.error("Notification failed", err));
+
+  return successResponse({
+    res,
+    message: "Order dispatched back to seller for shipping!",
     data: order
   });
 });

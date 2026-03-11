@@ -27,8 +27,29 @@ const Order = sequelize.define('Order', {
     type: DataTypes.DECIMAL(10, 2),
     defaultValue: 0,
   },
+  userId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  sellerId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
   status: {
-    type: DataTypes.ENUM('pending', 'confirmed', 'preparing', 'out-for-delivery', 'delivered', 'cancelled'),
+    type: DataTypes.ENUM(
+      'pending', 
+      'preparing', 
+      'awaiting-assignment', 
+      'assigned',
+      'accepted-by-partner',
+      'ready-to-ship', 
+      'shipped', 
+      'out-for-delivery', 
+      'arrived',
+      'delivered', 
+      'completed',
+      'cancelled'
+    ),
     defaultValue: 'pending',
   },
   paymentStatus: {
@@ -36,7 +57,7 @@ const Order = sequelize.define('Order', {
     defaultValue: 'unpaid',
   },
   paymentMethod: {
-    type: DataTypes.ENUM('stripe', 'cod'),
+    type: DataTypes.ENUM('stripe', 'cod', 'upi'),
     defaultValue: 'cod',
   },
   deliveryAddress: {
@@ -58,6 +79,22 @@ const Order = sequelize.define('Order', {
   deliveryPartnerId: {
     type: DataTypes.INTEGER,
     allowNull: true,
+  },
+  deliveryOtp: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  deliveryProof: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  otpExpiry: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  otpVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
   },
 }, {
   timestamps: true,

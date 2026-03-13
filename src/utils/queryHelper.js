@@ -23,7 +23,6 @@ export const buildQuery = (reqQuery, searchableFields = []) => {
   // Handle Search
   if (search && searchableFields.length > 0) {
     where[Op.or] = searchableFields.map(field => {
-        // Handle nested fields or associations if needed in future
         return { [field]: { [Op.substring]: search } };
     });
   }

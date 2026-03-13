@@ -12,6 +12,9 @@ import reviewRoutes from '../modules/review/reviewRoutes.js';
 import deliveryRoutes from '../modules/delivery/deliveryRoutes.js';
 import paymentRoutes from '../modules/payment/paymentRoutes.js';
 import inventoryRoutes from '../modules/inventory/inventoryRoutes.js';
+import favouriteRoutes from '../modules/favourite/favouriteRoutes.js';
+import addressRoutes from '../modules/address/addressRoutes.js';
+import couponRoutes from '../modules/coupon/couponRoutes.js';
 
 const router = express.Router();
 
@@ -28,6 +31,9 @@ router.use('/reviews', reviewRoutes);
 router.use('/delivery', deliveryRoutes);
 router.use('/payment', paymentRoutes);
 router.use('/inventory', inventoryRoutes);
+router.use('/favourites', favouriteRoutes);
+router.use('/addresses', addressRoutes);
+router.use('/coupons', couponRoutes);
 
 // Protected routes section
 // router.use(authMiddleware); 

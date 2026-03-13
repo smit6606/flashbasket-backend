@@ -1,3 +1,4 @@
+import { Product } from '../../models/index.js';
 import cartService from './cartService.js';
 import { successResponse } from '../../utils/responseFormat.js';
 import { MSG } from '../../utils/message.js';
@@ -9,10 +10,20 @@ import ApiError from '../../utils/ApiError.js';
  * @desc Add item to cart
  */
 export const addToCart = catchAsync(async (req, res) => {
-  const { productId, sellerId, quantity, price } = req.body;
+  const { productId, sellerId, quantity } = req.body;
   const userId = req.user.id;
 
-  const item = await cartService.addToCart(userId, productId, sellerId, quantity, price);
+  const product = await Product.findByPk(productId);
+  if (!product) {
+    throw new ApiError(StatusCodes.NOT_FOUND, MSG.PRODUCT.NOT_FOUND);
+  }
+
+  // Use discountPrice if available, otherwise regular price
+  const finalPrice = product.discountPrice && parseFloat(product.discountPrice) > 0 
+    ? product.discountPrice 
+    : product.price;
+
+  const item = await cartService.addToCart(userId, productId, sellerId, quantity, finalPrice);
 
   return successResponse({
     res,

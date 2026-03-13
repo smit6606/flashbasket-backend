@@ -11,6 +11,9 @@ import SubCategory from './SubCategory.js';
 import Cart from './Cart.js';
 import CartItem from './CartItem.js';
 import Review from './Review.js';
+import Favourite from './Favourite.js';
+import Address from './Address.js';
+import Coupon from './Coupon.js';
 
 // --- Associations ---
 
@@ -75,6 +78,22 @@ Review.belongsTo(User, { foreignKey: 'userId' });
 Product.hasMany(Review, { foreignKey: 'productId', onDelete: 'CASCADE' });
 Review.belongsTo(Product, { foreignKey: 'productId' });
 
+// 15. User <-> Favourite (One-to-Many)
+User.hasMany(Favourite, { foreignKey: 'userId' });
+Favourite.belongsTo(User, { foreignKey: 'userId' });
+
+// 16. Product <-> Favourite (One-to-Many)
+Product.hasMany(Favourite, { foreignKey: 'productId', onDelete: 'CASCADE' });
+Favourite.belongsTo(Product, { foreignKey: 'productId' });
+
+// 17. User <-> Address (One-to-Many)
+User.hasMany(Address, { foreignKey: 'userId', onDelete: 'CASCADE' });
+Address.belongsTo(User, { foreignKey: 'userId' });
+
+// 18. Order <-> Coupon (One-to-One / Many-to-One)
+Coupon.hasMany(Order, { foreignKey: 'couponId' });
+Order.belongsTo(Coupon, { foreignKey: 'couponId' });
+
 export {
   User,
   Seller,
@@ -88,5 +107,8 @@ export {
   Cart,
   CartItem,
   Review,
+  Favourite,
+  Address,
+  Coupon,
   sequelize
 };

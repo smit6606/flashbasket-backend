@@ -7,6 +7,25 @@ import catchAsync from '../../utils/catchAsync.js';
 import ApiError from '../../utils/ApiError.js';
 import { buildQuery, formatPaginatedResponse } from '../../utils/queryHelper.js';
 
+const getRatingAttributes = () => [
+  [
+    sequelize.literal(`(
+      SELECT COALESCE(AVG(rating), 0)
+      FROM Reviews
+      WHERE Reviews.productId = Product.id
+    )`),
+    'avgRating'
+  ],
+  [
+    sequelize.literal(`(
+      SELECT COUNT(*)
+      FROM Reviews
+      WHERE Reviews.productId = Product.id
+    )`),
+    'totalRatings'
+  ]
+];
+
 import { uploadToCloudinary, uploadMultipleToCloudinary } from '../../utils/cloudinary.js';
 
 /**
@@ -44,14 +63,41 @@ export const getAllProducts = catchAsync(async (req, res) => {
   const { minPrice, maxPrice, lat, lng, radius } = req.query;
   
   // Use buildQuery for standard fields
-  const queryOptions = buildQuery(req.query, ['productName', 'description']);
+  const queryOptions = buildQuery(req.query, ['productName', 'description', '$Category.name$']);
   const where = queryOptions.where;
+
+  // Remove non-column fields that buildQuery might have added from req.query
+  delete where.trending;
+  delete where.section;
+  delete where.minPrice;
+  delete where.maxPrice;
+  delete where.lat;
+  delete where.lng;
+  delete where.radius;
+
   where.status = 'active';
 
   if (minPrice || maxPrice) {
     where.price = {};
     if (minPrice) where.price[Op.gte] = minPrice;
     if (maxPrice) where.price[Op.lte] = maxPrice;
+  }
+
+  // Section specific filters
+  if (req.query.trending === 'true') {
+    // Trending: avgRating >= 4
+    where[Op.and] = [
+      sequelize.literal(`(
+        SELECT COALESCE(AVG(rating), 0)
+        FROM Reviews
+        WHERE Reviews.productId = Product.id
+      ) >= 4`)
+    ];
+  }
+
+  if (req.query.section === 'newly-added') {
+    queryOptions.order = [['createdAt', 'DESC']];
+    queryOptions.limit = 5;
   }
 
   const include = [
@@ -86,6 +132,9 @@ export const getAllProducts = catchAsync(async (req, res) => {
 
   const data = await Product.findAndCountAll({
     ...queryOptions,
+    attributes: {
+      include: getRatingAttributes()
+    },
     include
   });
 
@@ -102,6 +151,9 @@ export const getAllProducts = catchAsync(async (req, res) => {
 export const getProductById = catchAsync(async (req, res) => {
   const { id } = req.params;
   const product = await Product.findByPk(id, {
+    attributes: {
+      include: getRatingAttributes()
+    },
     include: [
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },
@@ -199,13 +251,28 @@ export const deleteProduct = catchAsync(async (req, res) => {
 // Other methods searchProducts, getSellerProducts etc. should follow the same pattern
 export const searchProducts = catchAsync(async (req, res) => {
   const { q } = req.query;
-  // Map 'q' to 'search' for buildQuery
-  req.query.search = q;
-  const queryOptions = buildQuery(req.query, ['productName', 'description']);
-  queryOptions.where.status = 'active';
+  const search = q || '';
+
+  const where = {
+    status: 'active',
+    [Op.or]: [
+      { productName: { [Op.substring]: search } },
+      { description: { [Op.substring]: search } },
+      { '$Category.name$': { [Op.substring]: search } }
+    ]
+  };
+
+  const { page = 1, limit = 10 } = req.query;
+  const offset = (parseInt(page) - 1) * parseInt(limit);
 
   const data = await Product.findAndCountAll({
-    ...queryOptions,
+    where,
+    limit: parseInt(limit),
+    offset,
+    subQuery: false, // Required for searching in included models
+    attributes: {
+      include: getRatingAttributes()
+    },
     include: [
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },
@@ -215,8 +282,8 @@ export const searchProducts = catchAsync(async (req, res) => {
 
   return successResponse({
     res,
-    message: `${MSG.SERVER.ACTION_SUCCESS} Search results for "${q}"`,
-    data: formatPaginatedResponse(data, req.query.page, req.query.limit)
+    message: `Search results for "${search}"`,
+    data: formatPaginatedResponse(data, page, limit)
   });
 });
 
@@ -247,7 +314,10 @@ export const getAdminProducts = catchAsync(async (req, res) => {
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },
       { model: Seller, attributes: ['id', 'shop_name', 'email'] }
-    ]
+    ],
+    attributes: {
+      include: getRatingAttributes()
+    }
   });
 
   return successResponse({
@@ -267,7 +337,10 @@ export const getSellerProducts = catchAsync(async (req, res) => {
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },
       { model: Seller, attributes: ['id', 'shop_name'] }
-    ]
+    ],
+    attributes: {
+      include: getRatingAttributes()
+    }
   });
 
   return successResponse({
@@ -285,7 +358,10 @@ export const getProductsByCategory = catchAsync(async (req, res) => {
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },
       { model: Seller, attributes: ['id', 'shop_name', 'latitude', 'longitude'] }
-    ]
+    ],
+    attributes: {
+      include: getRatingAttributes()
+    }
   });
 
   return successResponse({

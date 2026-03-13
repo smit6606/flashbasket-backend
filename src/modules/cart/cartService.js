@@ -51,7 +51,7 @@ class CartService {
         {
           model: CartItem,
           include: [
-            { model: Product, attributes: ['productName', 'images', 'unit'] },
+            { model: Product, attributes: ['productName', 'images', 'unit', 'price', 'discountPrice'] },
             { model: Seller, attributes: ['shop_name'] }
           ]
         }
@@ -62,10 +62,17 @@ class CartService {
 
     let subtotal = 0;
     const items = cart.CartItems.map(item => {
-      const total = parseFloat(item.price) * item.quantity;
+      const product = item.Product;
+      // Use discountPrice if available, otherwise fallback to item.price or product.price
+      const currentPrice = (product.discountPrice && parseFloat(product.discountPrice) > 0)
+        ? parseFloat(product.discountPrice)
+        : parseFloat(item.price);
+
+      const total = currentPrice * item.quantity;
       subtotal += total;
       return {
         ...item.toJSON(),
+        price: currentPrice.toFixed(2), // Reflect the actual price used
         itemTotal: total.toFixed(2)
       };
     });

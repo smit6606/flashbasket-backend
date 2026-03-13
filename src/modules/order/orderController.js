@@ -20,7 +20,7 @@ export const placeOrder = catchAsync(async (req, res) => {
       throw new ApiError(StatusCodes.FORBIDDEN, "Your purchasing privileges have been restricted by the admin. Please contact support.");
   }
 
-  const { deliveryAddress, latitude, longitude, paymentMethod } = req.body;
+  const { deliveryAddress, latitude, longitude, paymentMethod, couponId, discountAmount } = req.body;
 
   // 1. Get User's Cart
   const cart = await Cart.findOne({
@@ -41,22 +41,30 @@ export const placeOrder = catchAsync(async (req, res) => {
     let remainingQuantity = item.quantity;
 
     if (originalProduct.stock >= remainingQuantity) {
+      const finalPrice = originalProduct.discountPrice && parseFloat(originalProduct.discountPrice) > 0 
+        ? originalProduct.discountPrice 
+        : originalProduct.price;
+
       resolvedItems.push({
         productId: originalProduct.id,
         sellerId: originalProduct.sellerId,
         quantity: remainingQuantity,
-        price: originalProduct.price, // We could use original price or item.price, using original for accuracy
+        price: finalPrice,
         productName: originalProduct.productName
       });
       remainingQuantity = 0;
     } else {
       // Step 1: Partially fulfill from the original seller if possible
       if (originalProduct.stock > 0) {
+        const partialPrice = originalProduct.discountPrice && parseFloat(originalProduct.discountPrice) > 0 
+          ? originalProduct.discountPrice 
+          : originalProduct.price;
+
         resolvedItems.push({
           productId: originalProduct.id,
           sellerId: originalProduct.sellerId,
           quantity: originalProduct.stock,
-          price: originalProduct.price,
+          price: partialPrice,
           productName: originalProduct.productName
         });
         remainingQuantity -= originalProduct.stock;
@@ -77,11 +85,15 @@ export const placeOrder = catchAsync(async (req, res) => {
         if (remainingQuantity <= 0) break;
         
         const qtyToTake = Math.min(alt.stock, remainingQuantity);
+        const altPrice = alt.discountPrice && parseFloat(alt.discountPrice) > 0 
+          ? alt.discountPrice 
+          : alt.price;
+
         resolvedItems.push({
           productId: alt.id,
           sellerId: alt.sellerId,
           quantity: qtyToTake,
-          price: originalProduct.price, // Uses original cart item price to prevent Math mismatch with frontend
+          price: altPrice,
           productName: alt.productName
         });
         remainingQuantity -= qtyToTake;
@@ -116,9 +128,10 @@ export const placeOrder = catchAsync(async (req, res) => {
       const itemsTotal = items.reduce((sum, item) => sum + (parseFloat(item.price) * item.quantity), 0);
       
       const appliedDeliveryFee = isFirstSeller ? deliveryFeePerSeller : 0;
+      const appliedDiscount = isFirstSeller ? parseFloat(discountAmount || 0) : 0; // Apply total discount to the first order
       isFirstSeller = false;
 
-      const orderTotal = itemsTotal + appliedDeliveryFee;
+      const orderTotal = itemsTotal + appliedDeliveryFee - appliedDiscount;
       const commissionAmount = itemsTotal * 0.20; // 20% admin commission
 
       // Create Order
@@ -127,6 +140,8 @@ export const placeOrder = catchAsync(async (req, res) => {
         sellerId,
         groupId,
         totalAmount: orderTotal,
+        discountAmount: appliedDiscount,
+        couponId: couponId || null,
         deliveryFee: appliedDeliveryFee,
         commissionAmount,
         deliveryAddress,
@@ -230,6 +245,7 @@ export const getUserOrders = catchAsync(async (req, res) => {
         createdAt: order.createdAt,
         deliveryAddress: order.deliveryAddress,
         deliveryOtp: order.deliveryOtp, // Share the OTP if any part has it (usually all same)
+        paymentMethod: order.paymentMethod,
         Products: [],
         OrderSellers: []
       };
@@ -258,6 +274,7 @@ export const getUserOrders = catchAsync(async (req, res) => {
       sellerId: order.sellerId,
       amount: order.totalAmount,
       status: order.status,
+      paymentMethod: order.paymentMethod,
       Seller: order.Seller
     });
   });

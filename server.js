@@ -30,6 +30,11 @@ const startServer = async () => {
   // 3. Robust column assurance
   try {
     const columnsToEnsure = [
+      { name: 'totalAmount', type: 'DECIMAL(10, 2)', default: '0' },
+      { name: 'discountAmount', type: 'DECIMAL(10, 2)', default: '0' },
+      { name: 'couponId', type: 'INTEGER', after: 'discountAmount' },
+      { name: 'deliveryFee', type: 'DECIMAL(10, 2)', default: '0' },
+      { name: 'commissionAmount', type: 'DECIMAL(10, 2)', after: 'deliveryFee', default: '0' },
       { name: 'sellerId', type: 'INTEGER', after: 'deliveryFee' },
       { name: 'userId', type: 'INTEGER', after: 'deliveryFee' },
       { name: 'groupId', type: 'VARCHAR(255)', after: 'orderNumber' },

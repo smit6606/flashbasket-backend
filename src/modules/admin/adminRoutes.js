@@ -8,7 +8,9 @@ import {
   dispatchOrderToSeller,
   getAdminStats,
   getAllUsers,
-  getAllSellers
+  getAllSellers,
+  getUnifiedUsers,
+  updateUnifiedUserStatus
 } from './adminController.js';
 import protect, { restrictTo } from '../../middlewares/auth.js';
 
@@ -19,6 +21,8 @@ router.use(protect);
 router.use(restrictTo('admin'));
 
 router.get('/stats', getAdminStats);
+router.get('/unified-users', getUnifiedUsers);
+router.patch('/unified-users/:role/:id/status', updateUnifiedUserStatus);
 router.get('/users', getAllUsers);
 router.get('/sellers', getAllSellers);
 router.get('/partners', getAllPartners);

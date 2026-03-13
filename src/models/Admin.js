@@ -28,6 +28,30 @@ const Admin = sequelize.define('Admin', {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  phone: {
+    type: DataTypes.STRING,
+  },
+  address: {
+    type: DataTypes.TEXT,
+  },
+  city: {
+    type: DataTypes.STRING,
+  },
+  state: {
+    type: DataTypes.STRING,
+  },
+  country: {
+    type: DataTypes.STRING,
+  },
+  pincode: {
+    type: DataTypes.STRING,
+  },
+  profileImage: {
+    type: DataTypes.STRING,
+  },
+  cloudinaryId: {
+    type: DataTypes.STRING,
+  },
   role: {
     type: DataTypes.ENUM('superadmin', 'manager'),
     defaultValue: 'superadmin',

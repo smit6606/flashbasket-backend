@@ -7,6 +7,8 @@ import { successResponse } from '../../utils/responseFormat.js';
 import ApiError from '../../utils/ApiError.js';
 import catchAsync from '../../utils/catchAsync.js';
 
+import { uploadToCloudinary, deleteFromCloudinary } from '../../utils/cloudinary.js';
+
 const signToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET, {
     expiresIn: "1d",
@@ -48,8 +50,19 @@ export const register = catchAsync(async (req, res) => {
   const userData = { ...req.body };
 
   // If coordinates are provided, create a POINT for MySQL spatial index
-  if (latitude && longitude) {
-    userData.location = { type: 'Point', coordinates: [parseFloat(longitude), parseFloat(latitude)] };
+  if (latitude || longitude) {
+    const lat = latitude ? parseFloat(latitude) : null;
+    const lng = longitude ? parseFloat(longitude) : null;
+    
+    if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) {
+      userData.latitude = lat;
+      userData.longitude = lng;
+      userData.location = { type: 'Point', coordinates: [lng, lat] };
+    } else {
+      userData.latitude = null;
+      userData.longitude = null;
+      userData.location = null;
+    }
   }
 
   const newUser = await authService.register(role, userData);
@@ -105,6 +118,96 @@ export const getProfile = catchAsync(async (req, res) => {
     message: MSG.USER.PROFILE_FETCHED,
     data: user
   });
+});
+
+/**
+ * @desc Update Profile
+ */
+export const updateProfile = catchAsync(async (req, res) => {
+  const { id, role } = req;
+  const user = await authService.findById(req.role, req.user.id);
+  
+  if (!user) {
+    throw new ApiError(StatusCodes.NOT_FOUND, "User not found");
+  }
+
+  const updateData = { ...req.body };
+  
+  // Rule: Email is read-only
+  delete updateData.email;
+  delete updateData.password; // Handled in changePassword
+
+  // Handle Location if provided ( Seller / Delivery )
+  if (updateData.latitude !== undefined || updateData.longitude !== undefined) {
+    const latVal = updateData.latitude;
+    const lngVal = updateData.longitude;
+    
+    const lat = (latVal === '' || latVal === null || isNaN(parseFloat(latVal))) ? null : parseFloat(latVal);
+    const lng = (lngVal === '' || lngVal === null || isNaN(parseFloat(lngVal))) ? null : parseFloat(lngVal);
+
+    updateData.latitude = lat;
+    updateData.longitude = lng;
+
+    if (lat !== null && lng !== null) {
+        updateData.location = { 
+            type: 'Point', 
+            coordinates: [lng, lat] 
+        };
+    } else {
+        updateData.location = null;
+    }
+  }
+
+  // Handle Profile Image
+  if (req.file) {
+    // Delete old image if exists
+    if (user.cloudinaryId) {
+       await deleteFromCloudinary(user.cloudinaryId);
+    }
+    
+    const result = await uploadToCloudinary(req.file.buffer, `Profiles/${req.role}`);
+    updateData.profileImage = result.url;
+    updateData.cloudinaryId = result.public_id;
+  }
+
+  await user.update(updateData);
+  
+  // Return without password
+  const updatedUser = await authService.findByIdWithoutPassword(req.role, req.user.id);
+
+  return successResponse({
+    res,
+    message: "Profile updated successfully",
+    data: updatedUser
+  });
+});
+
+/**
+ * @desc Change Password
+ */
+export const changePassword = catchAsync(async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    
+    if (!currentPassword || !newPassword) {
+        throw new ApiError(StatusCodes.BAD_REQUEST, "Current and new password are required");
+    }
+
+    const user = await authService.findById(req.role, req.user.id);
+
+    // Verify current password
+    const isMatched = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatched) {
+        throw new ApiError(StatusCodes.UNAUTHORIZED, "Incorrect current password");
+    }
+
+    // Update password (hashing handled by model hook)
+    user.password = newPassword;
+    await user.save();
+
+    return successResponse({
+        res,
+        message: "Password changed successfully"
+    });
 });
 
 /**

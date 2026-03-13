@@ -33,6 +33,27 @@ const DeliveryPartner = sequelize.define('DeliveryPartner', {
     allowNull: false,
     unique: true,
   },
+  address: {
+    type: DataTypes.TEXT,
+  },
+  city: {
+    type: DataTypes.STRING,
+  },
+  state: {
+    type: DataTypes.STRING,
+  },
+  country: {
+    type: DataTypes.STRING,
+  },
+  pincode: {
+    type: DataTypes.STRING,
+  },
+  profileImage: {
+    type: DataTypes.STRING,
+  },
+  cloudinaryId: {
+    type: DataTypes.STRING,
+  },
   vehicleType: {
     type: DataTypes.ENUM('bike', 'scooter', 'bicycle'),
     allowNull: false,

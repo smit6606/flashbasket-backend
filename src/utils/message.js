@@ -76,7 +76,9 @@ export const MSG = {
   CATEGORY: {
     CREATED: "Category created successfully.",
     FETCHED: "Categories retrieved successfully.",
+    DELETED: "Category and all associated data deleted successfully.",
     SUBCATEGORY_CREATED: "SubCategory created successfully.",
+    SUBCATEGORY_DELETED: "SubCategory and all associated products deleted successfully.",
   },
 
   /* ==========================

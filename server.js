@@ -49,6 +49,32 @@ const startServer = async () => {
       }
     }
 
+    // Standardize Profile Columns for all User types
+    const profileCols = [
+      { name: 'address', type: 'TEXT' },
+      { name: 'city', type: 'VARCHAR(255)' },
+      { name: 'state', type: 'VARCHAR(255)' },
+      { name: 'country', type: 'VARCHAR(255)' },
+      { name: 'pincode', type: 'VARCHAR(255)' },
+      { name: 'profileImage', type: 'VARCHAR(255)' },
+      { name: 'cloudinaryId', type: 'VARCHAR(255)' },
+      { name: 'phone', type: 'VARCHAR(20)' },
+    ];
+
+    const tables = ['Users', 'Sellers', 'Admins', 'DeliveryPartners'];
+
+    for (const table of tables) {
+      for (const col of profileCols) {
+        const [results] = await sequelize.query(`SHOW COLUMNS FROM ${table} LIKE '${col.name}'`);
+        if (results.length === 0) {
+          await sequelize.query(`ALTER TABLE ${table} ADD COLUMN ${col.name} ${col.type}`);
+        } else if (col.name === 'address' && !results[0].Type.includes('text')) {
+          // Force fix if address is JSON or other type
+          await sequelize.query(`ALTER TABLE ${table} MODIFY COLUMN ${col.name} TEXT`);
+        }
+      }
+    }
+
     const [statusCol] = await sequelize.query("SHOW COLUMNS FROM Orders LIKE 'status'");
     if (statusCol.length > 0 && !statusCol[0].Type.includes('arrived')) {
       await sequelize.query(`
@@ -66,6 +92,30 @@ const startServer = async () => {
         ALTER TABLE Orders MODIFY COLUMN paymentMethod ENUM('stripe', 'cod', 'upi') DEFAULT 'cod'
       `);
     }
+
+    // Role and Status standardizations for Admin Panel
+    const statusConfigs = [
+      { table: 'Users', enum: "'active', 'restricted', 'blocked'", default: "'active'" },
+      { table: 'Sellers', enum: "'pending', 'active', 'suspended', 'rejected'", default: "'pending'" },
+      { table: 'DeliveryPartners', enum: "'pending', 'active', 'suspended'", default: "'pending'" },
+      { table: 'Categories', enum: "'active', 'inactive'", default: "'active'" },
+      { table: 'Products', enum: "'active', 'inactive', 'out-of-stock', 'pending', 'rejected', 'hidden'", default: "'pending'" }
+    ];
+
+    for (const conf of statusConfigs) {
+      try {
+        const [res] = await sequelize.query(`SHOW COLUMNS FROM ${conf.table} LIKE 'status'`);
+        if (res.length === 0) {
+          await sequelize.query(`ALTER TABLE ${conf.table} ADD COLUMN status ENUM(${conf.enum}) DEFAULT ${conf.default}`);
+        } else {
+          // Update ENUM if it exists but might be missing values (especially for Products)
+          await sequelize.query(`ALTER TABLE ${conf.table} MODIFY COLUMN status ENUM(${conf.enum}) DEFAULT ${conf.default}`);
+        }
+      } catch (err) {
+        console.log(`Could not sync status for ${conf.table}:`, err.message);
+      }
+    }
+    
   } catch (err) {
     console.error("Column check error:", err);
   }

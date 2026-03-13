@@ -37,8 +37,8 @@ const Product = sequelize.define('Product', {
     defaultValue: 0,
   },
   status: {
-    type: DataTypes.ENUM('active', 'inactive', 'out-of-stock'),
-    defaultValue: 'active',
+    type: DataTypes.ENUM('active', 'inactive', 'out-of-stock', 'pending', 'rejected', 'hidden'),
+    defaultValue: 'pending',
   },
 }, {
   timestamps: true,

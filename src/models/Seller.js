@@ -39,7 +39,18 @@ const Seller = sequelize.define('Seller', {
   },
   address: {
     type: DataTypes.TEXT,
-    allowNull: false,
+  },
+  city: {
+    type: DataTypes.STRING,
+  },
+  state: {
+    type: DataTypes.STRING,
+  },
+  country: {
+    type: DataTypes.STRING,
+  },
+  pincode: {
+    type: DataTypes.STRING,
   },
   latitude: {
     type: DataTypes.DECIMAL(10, 8),
@@ -54,6 +65,12 @@ const Seller = sequelize.define('Seller', {
     allowNull: true,
   },
   category: {
+    type: DataTypes.STRING,
+  },
+  profileImage: {
+    type: DataTypes.STRING,
+  },
+  cloudinaryId: {
     type: DataTypes.STRING,
   },
   isVerified: {

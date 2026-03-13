@@ -5,6 +5,7 @@ import { StatusCodes } from 'http-status-codes';
 import { Op } from 'sequelize';
 import catchAsync from '../../utils/catchAsync.js';
 import ApiError from '../../utils/ApiError.js';
+import { buildQuery, formatPaginatedResponse } from '../../utils/queryHelper.js';
 
 import { uploadToCloudinary, uploadMultipleToCloudinary } from '../../utils/cloudinary.js';
 
@@ -40,19 +41,18 @@ export const createProduct = catchAsync(async (req, res) => {
  * @desc Get All Products (Public) with Filtering
  */
 export const getAllProducts = catchAsync(async (req, res) => {
-  const { categoryId, minPrice, maxPrice, rating, lat, lng, radius, sellerId } = req.query;
-  const where = { status: 'active' };
-
-  if (sellerId) where.sellerId = sellerId;
+  const { minPrice, maxPrice, lat, lng, radius } = req.query;
+  
+  // Use buildQuery for standard fields
+  const queryOptions = buildQuery(req.query, ['productName', 'description']);
+  const where = queryOptions.where;
+  where.status = 'active';
 
   if (minPrice || maxPrice) {
     where.price = {};
     if (minPrice) where.price[Op.gte] = minPrice;
     if (maxPrice) where.price[Op.lte] = maxPrice;
   }
-
-  if (categoryId) where.categoryId = categoryId;
-  if (rating) where.rating = { [Op.gte]: rating };
 
   const include = [
     { model: Category, attributes: ['name'] },
@@ -72,27 +72,27 @@ export const getAllProducts = catchAsync(async (req, res) => {
     }
   ];
 
-  const orderOptions = lat && lng ? [
-    [
+  // If geolocation sorting is requested (and lat/lng provided), override order
+  if (lat && lng) {
+    queryOptions.order = [[
       sequelize.fn(
         'ST_Distance_Sphere',
         sequelize.fn('ST_GeomFromText', `POINT(${lng} ${lat})`),
         sequelize.col('Seller.location')
       ),
       'ASC'
-    ]
-  ] : [];
+    ]];
+  }
 
-  const products = await Product.findAll({
-    where,
-    include,
-    order: orderOptions
+  const data = await Product.findAndCountAll({
+    ...queryOptions,
+    include
   });
 
   return successResponse({
     res,
     message: MSG.PRODUCT.FETCHED_ALL,
-    data: products
+    data: formatPaginatedResponse(data, req.query.page, req.query.limit)
   });
 });
 
@@ -125,12 +125,19 @@ export const getProductById = catchAsync(async (req, res) => {
  */
 export const updateProduct = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const product = await Product.findOne({
-    where: { id, sellerId: req.user.id }
-  });
+  
+  const product = await Product.findByPk(id);
 
   if (!product) {
     throw new ApiError(StatusCodes.NOT_FOUND, MSG.PRODUCT.NOT_FOUND);
+  }
+
+  // Permission check
+  const isAdmin = req.role && req.role.toLowerCase() === 'admin';
+  const isOwner = product.sellerId === Number(req.user.id);
+
+  if (!isAdmin && !isOwner) {
+    throw new ApiError(StatusCodes.FORBIDDEN, "You do not have permission to update this product");
   }
 
   let finalImages = [];
@@ -165,12 +172,20 @@ export const updateProduct = catchAsync(async (req, res) => {
  */
 export const deleteProduct = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const product = await Product.findOne({
-    where: { id, sellerId: req.user.id }
-  });
+  
+  // Find product regardless of seller first to distinguish errors
+  const product = await Product.findByPk(id);
 
   if (!product) {
     throw new ApiError(StatusCodes.NOT_FOUND, MSG.PRODUCT.NOT_FOUND);
+  }
+
+  // Check permission: Admin can delete anything, Seller can only delete their own
+  const isAdmin = req.role && req.role.toLowerCase() === 'admin';
+  const isOwner = product.sellerId === Number(req.user.id);
+
+  if (!isAdmin && !isOwner) {
+    throw new ApiError(StatusCodes.FORBIDDEN, "You do not have permission to delete this product");
   }
 
   await product.destroy();
@@ -184,14 +199,13 @@ export const deleteProduct = catchAsync(async (req, res) => {
 // Other methods searchProducts, getSellerProducts etc. should follow the same pattern
 export const searchProducts = catchAsync(async (req, res) => {
   const { q } = req.query;
-  const products = await Product.findAll({
-    where: {
-      status: 'active',
-      [Op.or]: [
-        { productName: { [Op.substring]: q } },
-        { description: { [Op.substring]: q } }
-      ]
-    },
+  // Map 'q' to 'search' for buildQuery
+  req.query.search = q;
+  const queryOptions = buildQuery(req.query, ['productName', 'description']);
+  queryOptions.where.status = 'active';
+
+  const data = await Product.findAndCountAll({
+    ...queryOptions,
     include: [
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },
@@ -202,13 +216,53 @@ export const searchProducts = catchAsync(async (req, res) => {
   return successResponse({
     res,
     message: `${MSG.SERVER.ACTION_SUCCESS} Search results for "${q}"`,
-    data: products
+    data: formatPaginatedResponse(data, req.query.page, req.query.limit)
+  });
+});
+
+/**
+ * @desc Get All Products (Admin) with full search/filter
+ */
+export const getAdminProducts = catchAsync(async (req, res) => {
+  const { search } = req.query;
+  const queryOptions = buildQuery(req.query, ['productName', 'description']);
+
+  // Ensure 'where' and 'Op.or' are ready for additional search conditions
+  if (search) {
+    if (!queryOptions.where[Op.or]) {
+      queryOptions.where[Op.or] = [];
+    }
+    
+    // Add association-based search (Seller shop_name)
+    queryOptions.where[Op.or].push({
+        '$Seller.shop_name$': { [Op.substring]: search }
+    });
+  }
+
+  const data = await Product.findAndCountAll({
+    ...queryOptions,
+    distinct: true,
+    subQuery: false, // Essential when filtering on included models in 'where'
+    include: [
+      { model: Category, attributes: ['name'] },
+      { model: SubCategory, attributes: ['name'] },
+      { model: Seller, attributes: ['id', 'shop_name', 'email'] }
+    ]
+  });
+
+  return successResponse({
+    res,
+    message: "Admin products fetched",
+    data: formatPaginatedResponse(data, req.query.page, req.query.limit)
   });
 });
 
 export const getSellerProducts = catchAsync(async (req, res) => {
-  const products = await Product.findAll({
-    where: { sellerId: req.user.id },
+  req.query.sellerId = req.user.id;
+  const queryOptions = buildQuery(req.query, ['productName', 'description']);
+
+  const data = await Product.findAndCountAll({
+    ...queryOptions,
     include: [
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },
@@ -219,7 +273,7 @@ export const getSellerProducts = catchAsync(async (req, res) => {
   return successResponse({
     res,
     message: MSG.PRODUCT.FETCHED_ALL,
-    data: products
+    data: formatPaginatedResponse(data, req.query.page, req.query.limit)
   });
 });
 

@@ -4,6 +4,7 @@ import { StatusCodes } from 'http-status-codes';
 import catchAsync from '../../utils/catchAsync.js';
 import ApiError from '../../utils/ApiError.js';
 import { MSG } from '../../utils/message.js';
+import { buildQuery, formatPaginatedResponse } from '../../utils/queryHelper.js';
 import { io } from "../../../server.js";
 import { Op } from 'sequelize';
 import Stripe from 'stripe';
@@ -12,7 +13,13 @@ import Stripe from 'stripe';
  * @desc Place order from cart
  */
 export const placeOrder = catchAsync(async (req, res) => {
-  const userId = req.user.id;
+  const user = req.user;
+  const userId = user.id;
+
+  if (user.status === 'restricted') {
+      throw new ApiError(StatusCodes.FORBIDDEN, "Your purchasing privileges have been restricted by the admin. Please contact support.");
+  }
+
   const { deliveryAddress, latitude, longitude, paymentMethod } = req.body;
 
   // 1. Get User's Cart
@@ -307,29 +314,26 @@ export const trackOrder = catchAsync(async (req, res) => {
   });
 });
 
-/**
- * @desc Get Seller Orders
- */
 export const getSellerOrders = catchAsync(async (req, res) => {
-  try {
-    const orders = await Order.findAll({
-      where: { sellerId: req.user.id },
-      include: [
-        { model: User, attributes: ['id', 'user_name', 'email', 'phone'] },
-        { model: Product, through: { attributes: ['quantity', 'price'] } }
-      ],
-      order: [['createdAt', 'DESC']]
-    });
+  const queryOptions = buildQuery(req.query, ['orderNumber', 'deliveryAddress']);
+  
+  const data = await Order.findAndCountAll({
+    ...queryOptions,
+    where: { 
+      ...queryOptions.where,
+      sellerId: req.user.id 
+    },
+    include: [
+      { model: User, attributes: ['id', 'user_name', 'email', 'phone'] },
+      { model: Product, through: { attributes: ['quantity', 'price'] } }
+    ]
+  });
 
-    return successResponse({
-      res,
-      message: "Seller orders fetched",
-      data: orders
-    });
-  } catch (error) {
-    console.error("Error in getSellerOrders:", error);
-    throw new ApiError(StatusCodes.INTERNAL_SERVER_ERROR, error.message || "Failed to fetch seller orders");
-  }
+  return successResponse({
+    res,
+    message: "Seller orders fetched",
+    data: formatPaginatedResponse(data, req.query.page, req.query.limit)
+  });
 });
 
 /**

@@ -33,7 +33,19 @@ const User = sequelize.define('User', {
     unique: true,
   },
   address: {
-    type: DataTypes.JSON,
+    type: DataTypes.TEXT,
+  },
+  city: {
+    type: DataTypes.STRING,
+  },
+  state: {
+    type: DataTypes.STRING,
+  },
+  country: {
+    type: DataTypes.STRING,
+  },
+  pincode: {
+    type: DataTypes.STRING,
   },
   latitude: {
     type: DataTypes.DECIMAL(10, 8),
@@ -44,6 +56,9 @@ const User = sequelize.define('User', {
     allowNull: true,
   },
   profileImage: {
+    type: DataTypes.STRING,
+  },
+  cloudinaryId: {
     type: DataTypes.STRING,
   },
   isActive: {

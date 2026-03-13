@@ -9,21 +9,19 @@ import { Seller, Order, Product, sequelize } from '../../models/index.js';
  * @desc Get nearby sellers
  */
 export const getNearbySellers = catchAsync(async (req, res) => {
-  const { lat, lng, distance = 5 } = req.query;
+  const { lat, lng, distance = 5, pincode, query } = req.query;
 
-  if (!lat || !lng) {
-    throw new ApiError(StatusCodes.BAD_REQUEST, "Latitude and Longitude are required");
-  }
-
-  const sellers = await sellerService.findNearbySellers(
-    parseFloat(lat),
-    parseFloat(lng),
-    parseFloat(distance)
-  );
+  const sellers = await sellerService.findNearbySellers({
+    lat: lat ? parseFloat(lat) : null,
+    lng: lng ? parseFloat(lng) : null,
+    distance: parseFloat(distance),
+    pincode,
+    query
+  });
 
   return successResponse({
     res,
-    message: `Found ${sellers.length} sellers within ${distance}km`,
+    message: `Found ${sellers.length} sellers`,
     data: sellers
   });
 });

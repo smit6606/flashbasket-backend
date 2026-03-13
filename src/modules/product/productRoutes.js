@@ -7,25 +7,27 @@ import {
   searchProducts, 
   getProductsByCategory,
   updateProduct,
-  deleteProduct
+  deleteProduct,
+  getAdminProducts
 } from './productController.js';
-import authMiddleware from '../../middlewares/auth.js';
+import authMiddleware, { restrictTo } from '../../middlewares/auth.js';
 import { upload } from '../../middlewares/upload.js';
 
 const router = express.Router();
 
 // Public routes
 router.get('/', getAllProducts);
-router.get('/seller/list', authMiddleware, getSellerProducts); // Adjusted to avoid conflict with /:id
 router.get('/search', searchProducts);
-router.get('/:id', getProductById);
 router.get('/category/:id', getProductsByCategory);
+router.get('/admin', authMiddleware, restrictTo('admin'), getAdminProducts);
+router.get('/:id', getProductById);
 
 // Protected routes (Sellers)
 router.use(authMiddleware);
 router.post('/', upload.array('images', 10), createProduct);
 router.patch('/:id', upload.array('images', 10), updateProduct);
 router.delete('/:id', deleteProduct);
+router.get('/seller/list', getSellerProducts);
 router.get('/seller', getSellerProducts);
 
 export default router;

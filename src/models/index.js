@@ -23,11 +23,11 @@ Category.hasMany(SubCategory, { foreignKey: 'categoryId', onDelete: 'CASCADE' })
 SubCategory.belongsTo(Category, { foreignKey: 'categoryId' });
 
 // 3. Category <-> Product (One-to-Many)
-Category.hasMany(Product, { foreignKey: 'categoryId' });
+Category.hasMany(Product, { foreignKey: 'categoryId', onDelete: 'CASCADE' });
 Product.belongsTo(Category, { foreignKey: 'categoryId' });
 
 // 4. SubCategory <-> Product (One-to-Many)
-SubCategory.hasMany(Product, { foreignKey: 'subCategoryId' });
+SubCategory.hasMany(Product, { foreignKey: 'subCategoryId', onDelete: 'CASCADE' });
 Product.belongsTo(SubCategory, { foreignKey: 'subCategoryId' });
 
 // 5. User <-> Order (One-to-Many)
@@ -51,7 +51,7 @@ Cart.hasMany(CartItem, { foreignKey: 'cartId', onDelete: 'CASCADE' });
 CartItem.belongsTo(Cart, { foreignKey: 'cartId' });
 
 // 10. Product -> CartItem
-Product.hasMany(CartItem, { foreignKey: 'productId' });
+Product.hasMany(CartItem, { foreignKey: 'productId', onDelete: 'CASCADE' });
 CartItem.belongsTo(Product, { foreignKey: 'productId' });
 
 // 11. Seller -> CartItem
@@ -72,7 +72,7 @@ User.hasMany(Review, { foreignKey: 'userId' });
 Review.belongsTo(User, { foreignKey: 'userId' });
 
 // 14. Product <-> Review (One-to-Many)
-Product.hasMany(Review, { foreignKey: 'productId' });
+Product.hasMany(Review, { foreignKey: 'productId', onDelete: 'CASCADE' });
 Review.belongsTo(Product, { foreignKey: 'productId' });
 
 export {

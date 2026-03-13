@@ -4,16 +4,24 @@ import { StatusCodes } from 'http-status-codes';
 import catchAsync from '../../utils/catchAsync.js';
 import ApiError from '../../utils/ApiError.js';
 import { User, Seller, DeliveryPartner, Order, sequelize } from '../../models/index.js';
+import { Op } from 'sequelize';
+import { buildQuery, formatPaginatedResponse } from '../../utils/queryHelper.js';
 
 /**
  * @desc Get all registered users
  */
 export const getAllUsers = catchAsync(async (req, res) => {
-  const users = await authService.findAllUsers('user');
+  const queryOptions = buildQuery(req.query, ['user_name', 'email', 'phone']);
+  
+  const data = await User.findAndCountAll({
+    ...queryOptions,
+    attributes: { exclude: ['password'] }
+  });
+
   return successResponse({
     res,
     message: "Users fetched successfully",
-    data: users
+    data: formatPaginatedResponse(data, req.query.page, req.query.limit)
   });
 });
 
@@ -21,11 +29,17 @@ export const getAllUsers = catchAsync(async (req, res) => {
  * @desc Get all registered sellers
  */
 export const getAllSellers = catchAsync(async (req, res) => {
-  const sellers = await authService.findAllUsers('seller');
+  const queryOptions = buildQuery(req.query, ['shop_name', 'email', 'owner_name']);
+  
+  const data = await Seller.findAndCountAll({
+    ...queryOptions,
+    attributes: { exclude: ['password'] }
+  });
+
   return successResponse({
     res,
     message: "Sellers fetched successfully",
-    data: sellers
+    data: formatPaginatedResponse(data, req.query.page, req.query.limit)
   });
 });
 
@@ -33,11 +47,17 @@ export const getAllSellers = catchAsync(async (req, res) => {
  * @desc Get all delivery partners
  */
 export const getAllPartners = catchAsync(async (req, res) => {
-  const partners = await authService.findAllUsers('delivery');
+  const queryOptions = buildQuery(req.query, ['name', 'email', 'phone']);
+  
+  const data = await DeliveryPartner.findAndCountAll({
+    ...queryOptions,
+    attributes: { exclude: ['password'] }
+  });
+
   return successResponse({
     res,
     message: "Delivery partners fetched successfully",
-    data: partners
+    data: formatPaginatedResponse(data, req.query.page, req.query.limit)
   });
 });
 
@@ -124,19 +144,28 @@ export const getAdminCommissionStats = catchAsync(async (req, res) => {
  * GET /api/admin/orders
  */
 export const getAllOrders = catchAsync(async (req, res) => {
-  const orders = await Order.findAll({
+  const { search } = req.query;
+  const queryOptions = buildQuery(req.query, ['orderNumber', 'deliveryAddress']);
+  
+  if (search) {
+    queryOptions.where[Op.or].push({
+        '$User.user_name$': { [Op.substring]: search }
+    });
+  }
+
+  const data = await Order.findAndCountAll({
+    ...queryOptions,
     include: [
-      { model: User, attributes: ['id', 'user_name', 'email'] },
-      { model: Seller, attributes: ['id', 'shop_name'] },
-      { model: DeliveryPartner, as: 'DeliveryPartner', attributes: ['id', 'user_name', 'name'] }
-    ],
-    order: [['createdAt', 'DESC']]
+      { model: User, attributes: ['id', 'user_name', 'email', 'profileImage'] },
+      { model: Seller, attributes: ['id', 'shop_name', 'profileImage'] },
+      { model: DeliveryPartner, as: 'DeliveryPartner', attributes: ['id', 'user_name', 'name', 'profileImage'] }
+    ]
   });
 
   return successResponse({
     res,
     message: "All orders fetched",
-    data: orders
+    data: formatPaginatedResponse(data, req.query.page, req.query.limit)
   });
 });
 
@@ -199,5 +228,121 @@ export const dispatchOrderToSeller = catchAsync(async (req, res) => {
     res,
     message: "Order dispatched back to seller for shipping!",
     data: order
+  });
+});
+
+/**
+ * @desc Get Unified Users (Admin, Seller, Delivery, Customer)
+ * GET /api/admin/unified-users
+ */
+export const getUnifiedUsers = catchAsync(async (req, res) => {
+  const { page = 1, limit = 10, search = '', role = 'all', status = 'all', sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+  const offset = (page - 1) * limit;
+
+  let searchCondition = '';
+  if (search) {
+    searchCondition = `AND (name LIKE :search OR email LIKE :search OR phone LIKE :search)`;
+  }
+  
+  let roleCondition = '';
+  if (role !== 'all') {
+    roleCondition = `AND role = :role`;
+  }
+
+  let statusCondition = '';
+  if (status !== 'all') {
+    statusCondition = `AND status = :status`;
+  }
+
+  const queryParams = { 
+    replacements: { 
+      limit: parseInt(limit), 
+      offset: parseInt(offset), 
+      search: `%${search}%`,
+      role,
+      status
+    }, 
+    type: sequelize.QueryTypes.SELECT 
+  };
+
+  const baseQuery = `
+    SELECT id, name, email, phone, 'customer' AS role, status, profileImage, createdAt FROM Users WHERE 1=1 ${searchCondition}
+    UNION ALL
+    SELECT id, shop_name AS name, email, phone, 'seller' AS role, status, profileImage, createdAt FROM Sellers WHERE 1=1 ${searchCondition}
+    UNION ALL
+    SELECT id, name, email, phone, 'delivery' AS role, status, profileImage, createdAt FROM DeliveryPartners WHERE 1=1 ${searchCondition}
+    UNION ALL
+    SELECT id, name, email, phone, role as role, 'active' as status, profileImage, createdAt FROM Admins WHERE 1=1 ${searchCondition}
+  `;
+
+  const filteredQuery = `
+    SELECT * FROM (${baseQuery}) as combined
+    WHERE 1=1 ${roleCondition} ${statusCondition}
+  `;
+
+  // Prevent SQL injection by strictly matching allowed sortBy fields
+  const allowedSortFields = ['id', 'name', 'email', 'phone', 'role', 'status', 'createdAt'];
+  const safeSortBy = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
+  const safeSortOrder = sortOrder.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+  const finalQuery = `
+    ${filteredQuery}
+    ORDER BY ${safeSortBy} ${safeSortOrder}
+    LIMIT :limit OFFSET :offset
+  `;
+
+  const countQuery = `
+    SELECT COUNT(*) as total FROM (${filteredQuery}) as combinedCount
+  `;
+
+  const totalResult = await sequelize.query(countQuery, { replacements: queryParams.replacements, type: sequelize.QueryTypes.SELECT });
+  const items = await sequelize.query(finalQuery, queryParams);
+
+  return successResponse({
+    res,
+    message: "Unified users fetched successfully",
+    data: {
+      items,
+      totalItems: totalResult[0].total,
+      currentPage: parseInt(page),
+      totalPages: Math.ceil(totalResult[0].total / limit)
+    }
+  });
+});
+
+/**
+ * @desc Manage Any User Status (Approve/Suspend/Block)
+ * PATCH /api/admin/unified-users/:role/:id/status
+ */
+export const updateUnifiedUserStatus = catchAsync(async (req, res) => {
+  const { role, id } = req.params;
+  const { status } = req.body; 
+
+  const getModelByRole = (roleStr) => {
+    switch (roleStr) {
+      case 'customer': return User;
+      case 'seller': return Seller;
+      case 'delivery': return DeliveryPartner;
+      case 'admin': return null; // Prevent disabling other admins dynamically for safety
+      default: return null;
+    }
+  };
+
+  const Model = getModelByRole(role);
+  if (!Model) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, "Invalid role or operation not allowed");
+  }
+
+  const record = await Model.findByPk(id);
+  if (!record) {
+    throw new ApiError(StatusCodes.NOT_FOUND, "User not found");
+  }
+
+  await record.update({ status });
+
+  return successResponse({
+    res,
+    message: `${role} status updated to ${status}`,
+    data: record
   });
 });

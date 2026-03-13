@@ -28,6 +28,19 @@ export const protect = catchAsync(async (req, res, next) => {
     throw new ApiError(StatusCodes.UNAUTHORIZED, MSG.ACCESS.TOKEN_DELETED);
   }
 
+  // Admin Panel - Enforce account suspension instantly for non-customers
+  if (user.status) {
+    if (decoded.role === 'seller' && ['suspended', 'rejected'].includes(user.status)) {
+        throw new ApiError(StatusCodes.FORBIDDEN, `Seller account is ${user.status}. Access denied.`);
+    }
+    if (decoded.role === 'delivery' && user.status === 'suspended') {
+        throw new ApiError(StatusCodes.FORBIDDEN, "Delivery partner account is suspended.");
+    }
+    if (decoded.role === 'customer' && user.status === 'blocked') {
+        throw new ApiError(StatusCodes.FORBIDDEN, "Your account has been blocked by the administration.");
+    }
+  }
+
   req.user = user;
   req.role = decoded.role;
   next();

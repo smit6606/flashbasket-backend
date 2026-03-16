@@ -14,6 +14,7 @@ import Review from './Review.js';
 import Favourite from './Favourite.js';
 import Address from './Address.js';
 import Coupon from './Coupon.js';
+import OrderLog from './OrderLog.js';
 
 // --- Associations ---
 
@@ -94,6 +95,10 @@ Address.belongsTo(User, { foreignKey: 'userId' });
 Coupon.hasMany(Order, { foreignKey: 'couponId' });
 Order.belongsTo(Coupon, { foreignKey: 'couponId' });
 
+// 19. Order <-> OrderLog (One-to-Many)
+Order.hasMany(OrderLog, { foreignKey: 'orderId', onDelete: 'CASCADE' });
+OrderLog.belongsTo(Order, { foreignKey: 'orderId' });
+
 export {
   User,
   Seller,
@@ -110,5 +115,6 @@ export {
   Favourite,
   Address,
   Coupon,
+  OrderLog,
   sequelize
 };

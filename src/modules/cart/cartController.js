@@ -18,12 +18,7 @@ export const addToCart = catchAsync(async (req, res) => {
     throw new ApiError(StatusCodes.NOT_FOUND, MSG.PRODUCT.NOT_FOUND);
   }
 
-  // Use discountPrice if available, otherwise regular price
-  const finalPrice = product.discountPrice && parseFloat(product.discountPrice) > 0 
-    ? product.discountPrice 
-    : product.price;
-
-  const item = await cartService.addToCart(userId, productId, sellerId, quantity, finalPrice);
+  const item = await cartService.addToCart(userId, productId, sellerId, quantity);
 
   return successResponse({
     res,

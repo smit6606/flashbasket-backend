@@ -1,4 +1,4 @@
-import { Order, OrderItem, Cart, CartItem, Product, Seller, DeliveryPartner, User, sequelize } from '../../models/index.js';
+import { Order, OrderItem, Cart, CartItem, Product, Seller, DeliveryPartner, User, OrderLog, sequelize } from '../../models/index.js';
 import { successResponse } from '../../utils/responseFormat.js';
 import { StatusCodes } from 'http-status-codes';
 import catchAsync from '../../utils/catchAsync.js';
@@ -8,6 +8,26 @@ import { buildQuery, formatPaginatedResponse } from '../../utils/queryHelper.js'
 import { io } from "../../../server.js";
 import { Op } from 'sequelize';
 import Stripe from 'stripe';
+
+/**
+ * @desc Generate professional Order ID
+ */
+const generateOrderNumber = () => {
+    const year = new Date().getFullYear();
+    const random = Math.random().toString(36).substring(2, 7).toUpperCase();
+    return `ORD-${year}-${random}`;
+};
+
+/**
+ * @desc Helper to log order status changes
+ */
+export const logOrderHistory = async (orderId, status, message, role = 'system', userId = null) => {
+    try {
+        await OrderLog.create({ orderId, status, message, role, userId });
+    } catch (err) {
+        console.error("Order logging failed:", err);
+    }
+};
 
 /**
  * @desc Place order from cart
@@ -41,30 +61,28 @@ export const placeOrder = catchAsync(async (req, res) => {
     let remainingQuantity = item.quantity;
 
     if (originalProduct.stock >= remainingQuantity) {
-      const finalPrice = originalProduct.discountPrice && parseFloat(originalProduct.discountPrice) > 0 
-        ? originalProduct.discountPrice 
-        : originalProduct.price;
+      const finalPrice = item.priceAtPurchase || originalProduct.finalPrice || originalProduct.price;
 
       resolvedItems.push({
         productId: originalProduct.id,
         sellerId: originalProduct.sellerId,
         quantity: remainingQuantity,
         price: finalPrice,
+        discountAmount: item.discountAmount || 0,
         productName: originalProduct.productName
       });
       remainingQuantity = 0;
     } else {
       // Step 1: Partially fulfill from the original seller if possible
       if (originalProduct.stock > 0) {
-        const partialPrice = originalProduct.discountPrice && parseFloat(originalProduct.discountPrice) > 0 
-          ? originalProduct.discountPrice 
-          : originalProduct.price;
+        const partialPrice = item.priceAtPurchase || originalProduct.finalPrice || originalProduct.price;
 
         resolvedItems.push({
           productId: originalProduct.id,
           sellerId: originalProduct.sellerId,
           quantity: originalProduct.stock,
           price: partialPrice,
+          discountAmount: item.discountAmount || 0,
           productName: originalProduct.productName
         });
         remainingQuantity -= originalProduct.stock;
@@ -85,9 +103,7 @@ export const placeOrder = catchAsync(async (req, res) => {
         if (remainingQuantity <= 0) break;
         
         const qtyToTake = Math.min(alt.stock, remainingQuantity);
-        const altPrice = alt.discountPrice && parseFloat(alt.discountPrice) > 0 
-          ? alt.discountPrice 
-          : alt.price;
+        const altPrice = alt.finalPrice || alt.price;
 
         resolvedItems.push({
           productId: alt.id,
@@ -114,42 +130,75 @@ export const placeOrder = catchAsync(async (req, res) => {
   }, {});
 
   const createdOrders = [];
-  const deliveryFeePerSeller = 25; // Simple flat fee for each seller order
+  
+  // Calculate Grand Total for Fee Logic
+  const totalItemAmount = resolvedItems.reduce((sum, item) => sum + (parseFloat(item.price) * item.quantity), 0);
+  
+  // Zepto Logic
+  let globalHandlingFee = 4;
+  let globalDeliveryFee = totalItemAmount >= 200 ? 0 : 20;
+
+  // Promotional Offer Logic:
+  let globalPromoDiscount = totalItemAmount >= 1000 ? 50 : 0;
 
   // Create a unique group ID for this checkout session
   const groupId = `GRP-${Date.now()}-${userId}`;
+  const orderNumber = generateOrderNumber(); // Unified ID for entire checkout session
 
-  // 3. Create Orders (Transactionally)
-  const result = await sequelize.transaction(async (t) => {
-    let isFirstSeller = true;
+      // 3. Create Orders (Transactionally)
+      const result = await sequelize.transaction(async (t) => {
+        let isFirstSeller = true;
 
-    for (const sellerId in itemsBySeller) {
-      const items = itemsBySeller[sellerId];
-      const itemsTotal = items.reduce((sum, item) => sum + (parseFloat(item.price) * item.quantity), 0);
-      
-      const appliedDeliveryFee = isFirstSeller ? deliveryFeePerSeller : 0;
-      const appliedDiscount = isFirstSeller ? parseFloat(discountAmount || 0) : 0; // Apply total discount to the first order
-      isFirstSeller = false;
+        for (const sellerId in itemsBySeller) {
+          const items = itemsBySeller[sellerId];
+          const itemsSubtotal = items.reduce((sum, item) => sum + (parseFloat(item.price) * item.quantity), 0);
+          const itemsDiscount = items.reduce((sum, item) => sum + (parseFloat(item.discountAmount) * item.quantity), 0);
+          
+          // Apply fees and initial discount to the first seller's order for simplicity
+          const appliedDeliveryFee = isFirstSeller ? globalDeliveryFee : 0;
+          const appliedHandlingFee = isFirstSeller ? globalHandlingFee : 0;
+          const appliedCouponDiscount = isFirstSeller ? parseFloat(discountAmount || 0) : 0; 
+          const appliedPromoDiscount = isFirstSeller ? globalPromoDiscount : 0;
+          
+          isFirstSeller = false;
 
-      const orderTotal = itemsTotal + appliedDeliveryFee - appliedDiscount;
-      const commissionAmount = itemsTotal * 0.20; // 20% admin commission
+          const orderTotal = itemsSubtotal + appliedDeliveryFee + appliedHandlingFee - appliedCouponDiscount - appliedPromoDiscount;
+          const commissionAmount = itemsSubtotal * 0.20; // 20% admin commission
 
-      // Create Order
-      const order = await Order.create({
+          // Create Order
+          let orderCity = req.body.city || null;
+          
+          // Attempt to extract city from deliveryAddress if it's an object/JSON
+          if (!orderCity && deliveryAddress) {
+              try {
+                  if (typeof deliveryAddress === 'string' && (deliveryAddress.startsWith('{') || deliveryAddress.startsWith('['))) {
+                      const parsed = JSON.parse(deliveryAddress);
+                      orderCity = parsed.city || null;
+                  } else if (typeof deliveryAddress === 'object') {
+                      orderCity = deliveryAddress.city || null;
+                  }
+              } catch (e) {
+                  console.warn("Failed to parse deliveryAddress for city extraction");
+              }
+          }
+
+          const order = await Order.create({
         userId,
         sellerId,
         groupId,
         totalAmount: orderTotal,
-        discountAmount: appliedDiscount,
+        discountAmount: itemsDiscount + appliedCouponDiscount + appliedPromoDiscount, // Combined item discount + coupon + promo
         couponId: couponId || null,
         deliveryFee: appliedDeliveryFee,
+        handlingFee: appliedHandlingFee,
         commissionAmount,
         deliveryAddress,
+        city: orderCity,
         latitude,
         longitude,
         paymentMethod: paymentMethod || 'cod',
         paymentStatus: 'unpaid',
-        orderNumber: `FB-${Date.now()}-${sellerId}`,
+        orderNumber: orderNumber,
         location: latitude && longitude ? { type: 'Point', coordinates: [parseFloat(longitude), parseFloat(latitude)] } : null
       }, { transaction: t });
 
@@ -179,7 +228,24 @@ export const placeOrder = catchAsync(async (req, res) => {
         }, { transaction: t });
       }
 
+      // 3.1 Log Initial Status
+      await OrderLog.create({
+        orderId: order.id,
+        status: 'pending',
+        message: 'Order placed successfully',
+        role: 'user',
+        userId: userId
+      }, { transaction: t });
+
       createdOrders.push(order);
+      
+      // Emit real-time notification to the seller
+      io.emit(`seller_notifications_${sellerId}`, { 
+          type: 'NEW_ORDER', 
+          orderId: order.id, 
+          orderNumber: order.orderNumber,
+          totalAmount: order.totalAmount 
+      });
     }
 
     // 4. Clear Cart
@@ -239,7 +305,8 @@ export const getUserOrders = catchAsync(async (req, res) => {
     if (!groupedOrders[gId]) {
       groupedOrders[gId] = {
         id: order.id,
-        orderNumber: gId,
+        orderNumber: order.orderNumber,
+        groupId: gId,
         totalAmount: 0,
         status: order.status,
         createdAt: order.createdAt,
@@ -302,32 +369,50 @@ export const getUserOrders = catchAsync(async (req, res) => {
 export const trackOrder = catchAsync(async (req, res) => {
   const { orderNumber } = req.params;
 
-  const order = await Order.findOne({
+  const orders = await Order.findAll({
     where: { orderNumber },
     include: [
       { model: Product, through: { attributes: ['quantity', 'price'] } },
       { model: Seller, attributes: ['id', 'shop_name', 'address', 'phone'] },
       {
         model: DeliveryPartner,
-        as: 'DeliveryPartner', // Need to check if alias is set in models/index.js
+        as: 'DeliveryPartner',
         attributes: ['id', 'name', 'phone', 'vehicleType', 'vehicleNumber', 'latitude', 'longitude']
       }
     ]
   });
 
-  if (!order) {
+  if (!orders || orders.length === 0) {
     throw new ApiError(StatusCodes.NOT_FOUND, "Order not found");
   }
 
+  // Multi-seller aggregation logic
+  const aggregatedOrder = {
+    orderNumber: orders[0].orderNumber,
+    groupId: orders[0].groupId,
+    status: orders[0].status, // Simplification: use first order status
+    createdAt: orders[0].createdAt,
+    deliveryAddress: orders[0].deliveryAddress,
+    totalAmount: orders.reduce((sum, o) => sum + parseFloat(o.totalAmount), 0).toFixed(2),
+    subOrders: orders.map(o => ({
+        id: o.id,
+        seller: o.Seller,
+        status: o.status,
+        total: o.totalAmount,
+        products: o.Products,
+        deliveryPartner: o.DeliveryPartner
+    }))
+  };
+
   // Basic security: only owner can track (unless admin/seller/partner)
-  if (req.role === 'user' && order.userId !== req.user.id) {
+  if (req.user.role === 'user' && orders[0].userId !== req.user.id) {
     throw new ApiError(StatusCodes.FORBIDDEN, "Not authorized to track this order");
   }
 
   return successResponse({
     res,
     message: "Tracking details fetched",
-    data: order
+    data: aggregatedOrder
   });
 });
 
@@ -342,7 +427,8 @@ export const getSellerOrders = catchAsync(async (req, res) => {
     },
     include: [
       { model: User, attributes: ['id', 'user_name', 'email', 'phone'] },
-      { model: Product, through: { attributes: ['quantity', 'price'] } }
+      { model: Product, through: { attributes: ['quantity', 'price'] } },
+      { model: DeliveryPartner, as: 'DeliveryPartner', attributes: ['id', 'name', 'phone', 'profileImage'] }
     ]
   });
 
@@ -376,6 +462,18 @@ export const getPartnerOrders = catchAsync(async (req, res) => {
     console.error("Error in getPartnerOrders:", error);
     throw new ApiError(StatusCodes.INTERNAL_SERVER_ERROR, "Failed to fetch partner orders");
   }
+});
+
+/**
+ * @desc Get Order Logs (Timeline)
+ */
+export const getOrderLogs = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const logs = await OrderLog.findAll({
+    where: { orderId: id },
+    order: [['createdAt', 'ASC']]
+  });
+  return successResponse({ res, data: logs });
 });
 
 /**
@@ -461,10 +559,23 @@ export const updateOrderStatus = catchAsync(async (req, res) => {
   }
 
   await order.update(updateData);
+  
+  // Log History
+  await logOrderHistory(
+    order.id, 
+    status, 
+    `Order status updated to ${status.replace(/-/g, ' ')}`, 
+    role, 
+    user.id
+  );
 
   // Emit real-time order update for tracking
   io.emit(`order_update_${order.id}`, { status: order.status, orderId: order.id });
   io.emit(`user_orders_${order.userId}`, { type: 'STATUS_UPDATE', orderId: order.id, status: order.status });
+  
+  if (order.status === 'awaiting-assignment') {
+    io.emit('new_order_broadcast', { city: order.city, orderId: order.id });
+  }
 
   // Trigger Notification
   import('../../utils/notificationService.js').then(({ notifyOrderStatusChange }) => {

@@ -148,9 +148,12 @@ export const getAllOrders = catchAsync(async (req, res) => {
   const queryOptions = buildQuery(req.query, ['orderNumber', 'deliveryAddress']);
   
   if (search) {
-    queryOptions.where[Op.or].push({
-        '$User.user_name$': { [Op.substring]: search }
-    });
+    queryOptions.where[Op.or] = [
+        { orderNumber: { [Op.substring]: search } },
+        { '$User.user_name$': { [Op.substring]: search } },
+        { '$Seller.shop_name$': { [Op.substring]: search } },
+        { '$DeliveryPartner.name$': { [Op.substring]: search } }
+    ];
   }
 
   const data = await Order.findAndCountAll({
@@ -158,7 +161,7 @@ export const getAllOrders = catchAsync(async (req, res) => {
     include: [
       { model: User, attributes: ['id', 'user_name', 'email', 'profileImage'] },
       { model: Seller, attributes: ['id', 'shop_name', 'profileImage'] },
-      { model: DeliveryPartner, as: 'DeliveryPartner', attributes: ['id', 'user_name', 'name', 'profileImage'] }
+      { model: DeliveryPartner, as: 'DeliveryPartner', attributes: ['id', 'user_name', 'name', 'profileImage', 'phone'] }
     ]
   });
 

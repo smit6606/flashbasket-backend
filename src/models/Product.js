@@ -17,9 +17,29 @@ const Product = sequelize.define('Product', {
   price: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
+    comment: 'Legacy price field, maps to finalPrice'
+  },
+  originalPrice: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0,
+  },
+  discountPercent: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+  },
+  discountAmount: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0,
+  },
+  finalPrice: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0,
   },
   discountPrice: {
     type: DataTypes.DECIMAL(10, 2),
+    comment: 'Legacy discountPrice field'
   },
   stock: {
     type: DataTypes.INTEGER,

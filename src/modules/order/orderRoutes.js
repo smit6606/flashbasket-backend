@@ -6,7 +6,8 @@ import {
   getPartnerOrders,
   updateOrderStatus,
   resendOtp,
-  trackOrder
+  trackOrder,
+  getOrderLogs
 } from './orderController.js';
 import { getUserInvoice, getSellerInvoice } from './invoiceController.js';
 import protect, { restrictTo } from '../../middlewares/auth.js';
@@ -29,7 +30,8 @@ router.get('/seller/:orderId/invoice', restrictTo('seller'), getSellerInvoice);
 router.get('/partner', restrictTo('delivery'), getPartnerOrders);
 router.post('/:id/resend-otp', restrictTo('delivery'), resendOtp);
 
-// Shared Admin/Seller/Partner routes
+// Shared routes
 router.patch('/:id/status', updateOrderStatus);
+router.get('/:id/logs', getOrderLogs);
 
 export default router;

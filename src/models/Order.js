@@ -9,7 +9,7 @@ const Order = sequelize.define('Order', {
   },
   orderNumber: {
     type: DataTypes.STRING,
-    unique: true,
+    allowNull: false,
   },
   groupId: {
     type: DataTypes.STRING,
@@ -32,6 +32,10 @@ const Order = sequelize.define('Order', {
     defaultValue: 0,
   },
   commissionAmount: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0,
+  },
+  handlingFee: {
     type: DataTypes.DECIMAL(10, 2),
     defaultValue: 0,
   },
@@ -103,6 +107,14 @@ const Order = sequelize.define('Order', {
   otpVerified: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
+  },
+  city: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  acceptedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
   },
 }, {
   timestamps: true,

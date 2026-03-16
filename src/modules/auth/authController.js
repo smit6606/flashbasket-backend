@@ -7,6 +7,7 @@ import { successResponse } from '../../utils/responseFormat.js';
 import ApiError from '../../utils/ApiError.js';
 import catchAsync from '../../utils/catchAsync.js';
 
+import { normalizePhoneNumber, isValidPhoneNumber } from '../../utils/phoneUtils.js';
 import { uploadToCloudinary, deleteFromCloudinary } from '../../utils/cloudinary.js';
 
 const signToken = (id, role) => {
@@ -19,7 +20,15 @@ const signToken = (id, role) => {
  * @desc    Register a new user
  */
 export const register = catchAsync(async (req, res) => {
-  const { email, user_name, phone, role, password, latitude, longitude } = req.body;
+  let { email, user_name, phone, role, password, latitude, longitude } = req.body;
+
+  // Normalize phone if provided
+  if (phone) {
+    phone = normalizePhoneNumber(phone);
+    if (!isValidPhoneNumber(phone)) {
+      throw new ApiError(StatusCodes.BAD_REQUEST, "Please enter a valid 10-digit phone number");
+    }
+  }
 
   if (!role) {
     throw new ApiError(StatusCodes.BAD_REQUEST, MSG.AUTH.INVALID_ROLE);
@@ -47,7 +56,7 @@ export const register = catchAsync(async (req, res) => {
     }
   }
 
-  const userData = { ...req.body };
+  const userData = { ...req.body, phone };
 
   // If coordinates are provided, create a POINT for MySQL spatial index
   if (latitude || longitude) {
@@ -82,7 +91,14 @@ export const register = catchAsync(async (req, res) => {
  * @desc    Login user
  */
 export const login = catchAsync(async (req, res) => {
-  const { identifier, email, user_name, phone, password, role } = req.body;
+  let { identifier, email, user_name, phone, password, role } = req.body;
+  
+  // Normalize fields if they look like phone numbers
+  if (phone) phone = normalizePhoneNumber(phone);
+  if (identifier && !identifier.includes('@') && /^\d+$/.test(identifier.replace(/[^\d]/g, ''))) {
+    identifier = normalizePhoneNumber(identifier);
+  }
+
   const loginField = identifier || email || user_name || phone;
 
   if (!password || !role || !loginField) {
@@ -132,7 +148,21 @@ export const updateProfile = catchAsync(async (req, res) => {
   }
 
   const updateData = { ...req.body };
-  
+
+  // Normalize phone if provided in update
+  if (updateData.phone) {
+      updateData.phone = normalizePhoneNumber(updateData.phone);
+      if (!isValidPhoneNumber(updateData.phone)) {
+          throw new ApiError(StatusCodes.BAD_REQUEST, "Please enter a valid 10-digit phone number");
+      }
+      
+      // Check if phone already exists for another user
+      const existing = await authService.findByPhone(req.role, updateData.phone);
+      if (existing && existing.id !== req.user.id) {
+          throw new ApiError(StatusCodes.BAD_REQUEST, MSG.USER_ERROR.PHONE_EXISTS);
+      }
+  }
+
   // Rule: Email is read-only
   delete updateData.email;
   delete updateData.password; // Handled in changePassword

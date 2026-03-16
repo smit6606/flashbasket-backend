@@ -42,8 +42,18 @@ export const createProduct = catchAsync(async (req, res) => {
     imageUrls = await uploadMultipleToCloudinary(req.files.map(f => f.buffer));
   }
 
+  const { originalPrice, discountPercent } = req.body;
+  let finalPrice = req.body.finalPrice;
+
+  if (originalPrice && discountPercent !== undefined) {
+    finalPrice = originalPrice - (originalPrice * discountPercent / 100);
+  }
+
   const product = await Product.create({
     ...req.body,
+    finalPrice: finalPrice || req.body.price || 0,
+    price: finalPrice || req.body.price || 0,
+    discountAmount: (originalPrice || 0) - (finalPrice || 0),
     images: imageUrls.length ? imageUrls : req.body.images,
     sellerId: req.user.id
   });
@@ -60,27 +70,26 @@ export const createProduct = catchAsync(async (req, res) => {
  * @desc Get All Products (Public) with Filtering
  */
 export const getAllProducts = catchAsync(async (req, res) => {
-  const { minPrice, maxPrice, lat, lng, radius } = req.query;
-  
-  // Use buildQuery for standard fields
-  const queryOptions = buildQuery(req.query, ['productName', 'description', '$Category.name$']);
+  const { lat, lng, radius } = req.query;
+  // Create a clean copy of the query for buildQuery to avoid non-column fields in 'filters'
+  const filterParams = { ...req.query };
+  const excluded = ['category', 'trending', 'section', 'minPrice', 'maxPrice', 'lat', 'lng', 'radius'];
+  excluded.forEach(p => delete filterParams[p]);
+
+  const queryOptions = buildQuery(filterParams, ['productName', 'description', '$Category.name$']);
   const where = queryOptions.where;
 
-  // Remove non-column fields that buildQuery might have added from req.query
-  delete where.trending;
-  delete where.section;
-  delete where.minPrice;
-  delete where.maxPrice;
-  delete where.lat;
-  delete where.lng;
-  delete where.radius;
+  // Custom mapping for Category filter
+  if (req.query.category && req.query.category !== 'all') {
+    where['$Category.name$'] = req.query.category;
+  }
 
   where.status = 'active';
 
-  if (minPrice || maxPrice) {
+  if (req.query.minPrice || req.query.maxPrice) {
     where.price = {};
-    if (minPrice) where.price[Op.gte] = minPrice;
-    if (maxPrice) where.price[Op.lte] = maxPrice;
+    if (req.query.minPrice) where.price[Op.gte] = req.query.minPrice;
+    if (req.query.maxPrice) where.price[Op.lte] = req.query.maxPrice;
   }
 
   // Section specific filters
@@ -135,7 +144,8 @@ export const getAllProducts = catchAsync(async (req, res) => {
     attributes: {
       include: getRatingAttributes()
     },
-    include
+    include,
+    subQuery: false
   });
 
   return successResponse({
@@ -207,8 +217,25 @@ export const updateProduct = catchAsync(async (req, res) => {
     finalImages = product.images;
   }
 
+  const { originalPrice, discountPercent } = req.body;
+  let finalPrice = req.body.finalPrice;
+
+  if (originalPrice && discountPercent !== undefined) {
+    finalPrice = originalPrice - (originalPrice * discountPercent / 100);
+  } else if (!finalPrice && (originalPrice || discountPercent !== undefined)) {
+      // If one is missing but the other is present, use current values
+      const op = originalPrice || product.originalPrice;
+      const dp = discountPercent !== undefined ? discountPercent : product.discountPercent;
+      finalPrice = op - (op * dp / 100);
+  }
+
+  const calculatedDiscountAmount = (originalPrice || product.originalPrice || 0) - (finalPrice !== undefined ? finalPrice : product.finalPrice || 0);
+
   await product.update({
     ...req.body,
+    finalPrice: finalPrice !== undefined ? finalPrice : product.finalPrice,
+    price: finalPrice !== undefined ? finalPrice : product.price,
+    discountAmount: calculatedDiscountAmount,
     images: finalImages
   });
 

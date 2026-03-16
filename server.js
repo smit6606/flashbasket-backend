@@ -8,6 +8,8 @@ import { connectDB, sequelize } from "./src/config/db.js";
 import { Order } from "./src/models/index.js";
 import mainRoutes from "./src/routes/index.js";
 import errorMiddleware from "./src/middlewares/errorMiddleware.js";
+import { getDefaultCategoryImage } from "./src/utils/categoryUtils.js";
+import { Category } from "./src/models/index.js";
 
 dotenv.config();
 
@@ -41,7 +43,10 @@ const startServer = async () => {
       { name: 'deliveryOtp', type: 'VARCHAR(255)', after: 'status' },
       { name: 'otpExpiry', type: 'DATETIME', after: 'status' },
       { name: 'otpVerified', type: 'TINYINT(1)', after: 'status', default: '0' },
-      { name: 'deliveryProof', type: 'VARCHAR(255)', after: 'status' }
+      { name: 'deliveryProof', type: 'VARCHAR(255)', after: 'status' },
+      { name: 'handlingFee', type: 'DECIMAL(10, 2)', after: 'commissionAmount', default: '0' },
+      { name: 'city', type: 'VARCHAR(100)', after: 'deliveryAddress' },
+      { name: 'acceptedAt', type: 'DATETIME', after: 'deliveryPartnerId' }
     ];
 
     for (const col of columnsToEnsure) {
@@ -120,7 +125,65 @@ const startServer = async () => {
         console.log(`Could not sync status for ${conf.table}:`, err.message);
       }
     }
+    // Review Table sync - ensure sellerId exists
+    const [revCol] = await sequelize.query("SHOW COLUMNS FROM Reviews LIKE 'sellerId'");
+    if (revCol.length === 0) {
+      await sequelize.query("ALTER TABLE Reviews ADD COLUMN sellerId INTEGER NULL AFTER productId");
+    }
+
+    // Ensure image column in Categories
+    const [catImgCol] = await sequelize.query("SHOW COLUMNS FROM Categories LIKE 'image'");
+    if (catImgCol.length === 0) {
+      await sequelize.query("ALTER TABLE Categories ADD COLUMN image VARCHAR(255) NULL AFTER icon");
+    }
+
+    // Hydrate existing categories without image
+    try {
+      const emptyCats = await Category.findAll({ where: { image: null } });
+      for (const cat of emptyCats) {
+        cat.image = getDefaultCategoryImage(cat.name);
+        await cat.save();
+      }
+    } catch (err) {
+      console.error("Failed to hydrate category images:", err);
+    }
+
+    // NEW PRICING FIELDS - PRODUCTS
+    const productCols = [
+      { name: 'originalPrice', type: 'DECIMAL(10, 2)', default: '0' },
+      { name: 'discountPercent', type: 'INTEGER', default: '0' },
+      { name: 'discountAmount', type: 'DECIMAL(10, 2)', default: '0' },
+      { name: 'finalPrice', type: 'DECIMAL(10, 2)', default: '0' }
+    ];
+    for (const col of productCols) {
+      const [res] = await sequelize.query(`SHOW COLUMNS FROM Products LIKE '${col.name}'`);
+      if (res.length === 0) {
+        await sequelize.query(`ALTER TABLE Products ADD COLUMN ${col.name} ${col.type} DEFAULT ${col.default}`);
+      }
+    }
+    // Initialize Product pricing from legacy field if empty
+    await sequelize.query("UPDATE Products SET originalPrice = price, finalPrice = price, discountAmount = (originalPrice - finalPrice) WHERE originalPrice = 0 OR finalPrice = 0");
+
+    // NEW PRICING FIELDS - CARTITEMS
+    const cartItemCols = [
+      { name: 'priceAtPurchase', type: 'DECIMAL(10, 2)', default: '0' },
+      { name: 'discountPercent', type: 'INTEGER', default: '0' },
+      { name: 'discountAmount', type: 'DECIMAL(10, 2)', default: '0' }
+    ];
+    for (const col of cartItemCols) {
+      const [res] = await sequelize.query(`SHOW COLUMNS FROM CartItems LIKE '${col.name}'`);
+      if (res.length === 0) {
+        await sequelize.query(`ALTER TABLE CartItems ADD COLUMN ${col.name} ${col.type} DEFAULT ${col.default}`);
+      }
+    }
     
+    // Ensure the old 'price' column in CartItems is nullable
+    const [priceCol] = await sequelize.query("SHOW COLUMNS FROM CartItems LIKE 'price'");
+    if (priceCol.length > 0 && priceCol[0].Null === 'NO') {
+      await sequelize.query("ALTER TABLE CartItems MODIFY COLUMN price DECIMAL(10, 2) NULL");
+    }
+    // Initialize CartItem pricing from legacy field if empty
+    await sequelize.query("UPDATE CartItems SET priceAtPurchase = price WHERE priceAtPurchase = 0 AND price IS NOT NULL");
   } catch (err) {
     console.error("Column check error:", err);
   }
@@ -133,7 +196,21 @@ const startServer = async () => {
     }
   } catch (err) {}
 
-  app.use(cors());
+  // Enable CORS with support for Private Network Access (PNA)
+  app.use(cors({
+    origin: '*',
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Access-Control-Allow-Private-Network"],
+    credentials: true
+  }));
+
+  // Specifically handle the Private Network Access preflight request
+  app.use((req, res, next) => {
+    if (req.headers['access-control-request-private-network']) {
+      res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    }
+    next();
+  });
 
   // Webhook for Stripe - must use raw body
   app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {

@@ -2,32 +2,40 @@ import { sequelize } from '../src/config/db.js';
 import Admin from '../src/models/Admin.js';
 import bcrypt from 'bcryptjs';
 
+import dotenv from 'dotenv';
+dotenv.config();
+
 const setupAdmin = async () => {
     try {
         await sequelize.authenticate();
         console.log('Connection has been established successfully.');
         
-        let admin = await Admin.findOne({ where: { email: 'admin@flashbasket.com' } });
+        const adminEmail = process.env.ADMIN_EMAIL || 'admin@flashbasket.com';
+        const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+
+        // Find by user_name instead of email to avoid duplicate record issues when changing email
+        let admin = await Admin.findOne({ where: { user_name: 'superadmin' } });
         
         if (admin) {
-            console.log('Admin already exists. Resetting password to: admin123');
-            admin.password = 'admin123';
+            console.log(`Admin (superadmin) already exists. Syncing credentials from .env...`);
+            admin.email = adminEmail;
+            admin.password = adminPassword;
             await admin.save();
         } else {
-            console.log('Creating new admin with password: admin123');
+            console.log(`Creating new admin (superadmin) with credentials from .env...`);
             admin = await Admin.create({
                 name: 'Super Admin',
                 user_name: 'superadmin',
-                email: 'admin@flashbasket.com',
-                password: 'admin123',
+                email: adminEmail,
+                password: adminPassword,
                 role: 'superadmin'
             });
         }
         
-        console.log('--- ADMIN CREDENTIALS ---');
-        console.log(`Email: ${admin.email}`);
-        console.log(`Password: admin123`);
-        console.log('-------------------------');
+        console.log('--- ADMIN CREDENTIALS SYNCED ---');
+        console.log(`Email: ${adminEmail}`);
+        console.log(`Password: ${adminPassword}`);
+        console.log('---------------------------------');
         
         process.exit(0);
     } catch (error) {

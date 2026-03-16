@@ -16,7 +16,15 @@ export const protect = catchAsync(async (req, res, next) => {
   }
 
   const token = authHeader.split(" ")[1];
-  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  let decoded;
+  try {
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      throw new ApiError(StatusCodes.UNAUTHORIZED, MSG.ACCESS.SESSION_EXPIRED);
+    }
+    throw new ApiError(StatusCodes.UNAUTHORIZED, MSG.ACCESS.TOKEN_INVALID);
+  }
 
   if (!decoded.role || !decoded.id) {
     throw new ApiError(StatusCodes.UNAUTHORIZED, MSG.ACCESS.TOKEN_INVALID);

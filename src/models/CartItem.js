@@ -13,7 +13,20 @@ const CartItem = sequelize.define('CartItem', {
   },
   price: {
     type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
+  priceAtPurchase: {
+    type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
+    defaultValue: 0,
+  },
+  discountPercent: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+  },
+  discountAmount: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0,
   },
 }, {
   timestamps: true,

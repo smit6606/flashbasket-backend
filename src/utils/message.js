@@ -4,7 +4,7 @@ export const MSG = {
   ========================== */
   AUTH: {
     LOGIN_SUCCESS: "Login successful.",
-    LOGIN_FAILED: "Invalid credentials.",
+    LOGIN_FAILED: "Invalid email or password",
     REGISTER_SUCCESS: "Account created successfully.",
     LOGOUT_SUCCESS: "Logged out successfully.",
     INVALID_ROLE: "Please provide a valid role.",
@@ -19,6 +19,7 @@ export const MSG = {
     TOKEN_MISSING: "Authentication token is missing.",
     TOKEN_INVALID: "Invalid or expired authentication token.",
     TOKEN_DELETED: "Token is no longer valid. User does not exist.",
+    SESSION_EXPIRED: "Session expired. Please login again.",
     ACCESS_DENIED: "Access denied.",
   },
 

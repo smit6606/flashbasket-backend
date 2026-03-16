@@ -1,16 +1,35 @@
 import { Category, SubCategory, Product, OrderItem, sequelize } from '../../models/index.js';
 import { MSG } from '../../utils/message.js';
-import { successResponse } from '../../utils/responseFormat.js';
+import { successResponse, errorResponse } from '../../utils/responseFormat.js';
 import { StatusCodes } from 'http-status-codes';
 import catchAsync from '../../utils/catchAsync.js';
 import { buildQuery, formatPaginatedResponse } from '../../utils/queryHelper.js';
+import { getDefaultCategoryImage } from '../../utils/categoryUtils.js';
+import { Op } from 'sequelize';
 
 /**
  * @desc Create Category (Admin Only)
  */
 export const createCategory = catchAsync(async (req, res) => {
-  const { name, icon } = req.body;
-  const category = await Category.create({ name, icon });
+  const { name, icon, image } = req.body;
+
+  // Check if category already exists (Case-insensitive)
+  const existingCategory = await Category.findOne({ 
+    where: { 
+      name: { [Op.like]: name } 
+    } 
+  });
+  
+  if (existingCategory) {
+    return errorResponse({
+      res,
+      statusCode: StatusCodes.BAD_REQUEST,
+      message: `Category "${name}" already exists.`
+    });
+  }
+
+  const categoryImage = image || getDefaultCategoryImage(name);
+  const category = await Category.create({ name, icon, image: categoryImage });
 
   return successResponse({
     res,
@@ -85,6 +104,23 @@ export const getSubCategories = catchAsync(async (req, res) => {
  */
 export const createSubCategory = catchAsync(async (req, res) => {
   const { name, categoryId } = req.body;
+
+  // Check if subcategory already exists for this category (Case-insensitive)
+  const existingSub = await SubCategory.findOne({ 
+    where: { 
+      name: { [Op.like]: name },
+      categoryId 
+    } 
+  });
+  
+  if (existingSub) {
+    return errorResponse({
+      res,
+      statusCode: StatusCodes.BAD_REQUEST,
+      message: `Subcategory "${name}" already exists in this category.`
+    });
+  }
+
   const subCategory = await SubCategory.create({ name, categoryId });
 
   return successResponse({

@@ -11,7 +11,16 @@ export const buildQuery = (reqQuery, searchableFields = []) => {
     limit = 10, 
     search = '', 
     sortBy = 'id', 
-    sortOrder = 'DESC', 
+    sortOrder = 'DESC',
+    // Exclude common non-column parameters
+    category,
+    trending,
+    section,
+    minPrice,
+    maxPrice,
+    lat,
+    lng,
+    radius,
     ...filters 
   } = reqQuery;
 

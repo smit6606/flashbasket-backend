@@ -49,20 +49,20 @@ const Order = sequelize.define('Order', {
   },
   status: {
     type: DataTypes.ENUM(
-      'pending', 
-      'preparing', 
-      'awaiting-assignment', 
-      'assigned',
-      'accepted-by-partner',
-      'ready-to-ship', 
-      'shipped', 
-      'out-for-delivery', 
-      'arrived',
-      'delivered', 
-      'completed',
-      'cancelled'
+      'Pending', 
+      'Preparing', 
+      'Awaiting-Assignment', 
+      'Assigned',
+      'Accepted-By-Partner',
+      'Ready-to-Ship', 
+      'Shipped', 
+      'Out-for-Delivery', 
+      'Arrived',
+      'Delivered', 
+      'Completed',
+      'Cancelled'
     ),
-    defaultValue: 'pending',
+    defaultValue: 'Pending',
   },
   paymentStatus: {
     type: DataTypes.ENUM('unpaid', 'paid', 'failed', 'refunded'),

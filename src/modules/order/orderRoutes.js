@@ -24,6 +24,10 @@ router.get('/:orderId/invoice', getUserInvoice);
 
 // Seller routes
 router.get('/seller', restrictTo('seller'), getSellerOrders);
+router.get('/seller/completed', restrictTo('seller'), (req, res, next) => {
+  req.query.status = 'Delivered,Completed';
+  getSellerOrders(req, res, next);
+});
 router.get('/seller/:orderId/invoice', restrictTo('seller'), getSellerInvoice);
 
 // Partner routes

@@ -17,7 +17,7 @@ export const getAvailableOrders = catchAsync(async (req, res) => {
 
   const orders = await Order.findAll({
     where: { 
-      status: 'awaiting-assignment', 
+      status: 'Awaiting-Assignment', 
       deliveryPartnerId: null,
       city: partner.city
     },
@@ -45,13 +45,13 @@ export const acceptOrder = catchAsync(async (req, res) => {
   // 1. Production-level atomic update to prevent race conditions
   const [updatedCount] = await Order.update({ 
     deliveryPartnerId: partnerId,
-    status: 'accepted-by-partner',
+    status: 'Accepted-By-Partner',
     acceptedAt: new Date()
   }, {
     where: { 
       id: id, 
       deliveryPartnerId: null, // Critical: only update if no one else has it
-      status: 'awaiting-assignment'
+      status: 'Awaiting-Assignment'
     }
   });
 
@@ -80,11 +80,11 @@ export const acceptOrder = catchAsync(async (req, res) => {
   });
 
   // 3. Status updates for tracking
-  io.emit(`order_update_${id}`, { status: 'accepted-by-partner', orderId: id });
-  io.emit(`user_orders_${order.userId}`, { type: 'STATUS_UPDATE', orderId: id, status: 'accepted-by-partner' });
+  io.emit(`order_update_${id}`, { status: 'Accepted-By-Partner', orderId: id });
+  io.emit(`user_orders_${order.userId}`, { type: 'STATUS_UPDATE', orderId: id, status: 'Accepted-By-Partner' });
 
   // 4. Log History
-  await logOrderHistory(id, 'accepted-by-partner', 'Delivery partner accepted the order', 'delivery', partnerId);
+  await logOrderHistory(id, 'Accepted-By-Partner', 'Delivery partner accepted the order', 'delivery', partnerId);
 
   return successResponse({
     res,
@@ -107,14 +107,14 @@ export const pickupOrder = catchAsync(async (req, res) => {
     throw new ApiError(StatusCodes.NOT_FOUND, "Order not found or not assigned to you");
   }
 
-  await order.update({ status: 'out-for-delivery' });
+  await order.update({ status: 'Out-for-Delivery' });
 
   // Log History
-  await logOrderHistory(id, 'out-for-delivery', 'Order picked up and on the way', 'delivery', req.user.id);
+  await logOrderHistory(id, 'Out-for-Delivery', 'Order picked up and on the way', 'delivery', req.user.id);
 
   // Real-time update to customer
-  io.emit(`order_update_${order.id}`, { status: 'out-for-delivery', orderId: order.id });
-  io.emit(`user_orders_${order.userId}`, { type: 'STATUS_UPDATE', orderId: order.id, status: 'out-for-delivery' });
+  io.emit(`order_update_${order.id}`, { status: 'Out-for-Delivery', orderId: order.id });
+  io.emit(`user_orders_${order.userId}`, { type: 'STATUS_UPDATE', orderId: order.id, status: 'Out-for-Delivery' });
 
   return successResponse({
     res,
@@ -138,16 +138,16 @@ export const completeDelivery = catchAsync(async (req, res) => {
   }
 
   await order.update({ 
-    status: 'delivered',
+    status: 'Delivered',
     paymentStatus: 'paid' // Assuming COD or successful completion
   });
 
   // Log History
-  await logOrderHistory(id, 'delivered', 'Order delivered successfully', 'delivery', req.user.id);
+  await logOrderHistory(id, 'Delivered', 'Order delivered successfully', 'delivery', req.user.id);
 
   // Real-time update to customer
-  io.emit(`order_update_${order.id}`, { status: 'delivered', orderId: order.id });
-  io.emit(`user_orders_${order.userId}`, { type: 'STATUS_UPDATE', orderId: order.id, status: 'delivered' });
+  io.emit(`order_update_${order.id}`, { status: 'Delivered', orderId: order.id });
+  io.emit(`user_orders_${order.userId}`, { type: 'STATUS_UPDATE', orderId: order.id, status: 'Delivered' });
 
   return successResponse({
     res,

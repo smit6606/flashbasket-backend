@@ -66,7 +66,12 @@ export const getAllPartners = catchAsync(async (req, res) => {
  */
 export const updateSellerStatus = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const { status } = req.body; // e.g., 'active', 'suspended'
+  const { status } = req.body; // 'Active' or 'Suspended'
+
+  const validStatuses = ['Active', 'Suspended'];
+  if (!validStatuses.includes(status)) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, `Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+  }
 
   const seller = await Seller.findByPk(id);
   if (!seller) {
@@ -191,7 +196,7 @@ export const assignDeliveryPartner = catchAsync(async (req, res) => {
 
   await order.update({
     deliveryPartnerId: partnerId,
-    status: 'assigned' 
+    status: 'Assigned' 
   });
 
   // Optionally mark partner as busy
@@ -216,11 +221,11 @@ export const dispatchOrderToSeller = catchAsync(async (req, res) => {
     throw new ApiError(StatusCodes.NOT_FOUND, "Order not found");
   }
 
-  if (order.status !== 'accepted-by-partner') {
+  if (order.status !== 'Accepted-By-Partner') {
     throw new ApiError(StatusCodes.BAD_REQUEST, "Delivery partner must accept the order before dispatching.");
   }
 
-  await order.update({ status: 'ready-to-ship' });
+  await order.update({ status: 'Ready-to-Ship' });
 
   // Trigger Notification
   import('../../utils/notificationService.js').then(({ notifyOrderStatusChange }) => {

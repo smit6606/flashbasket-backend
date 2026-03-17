@@ -9,15 +9,17 @@ import { Order } from "./src/models/index.js";
 import mainRoutes from "./src/routes/index.js";
 import errorMiddleware from "./src/middlewares/errorMiddleware.js";
 import { getDefaultCategoryImage } from "./src/utils/categoryUtils.js";
-import { Category } from "./src/models/index.js";
+import { Category, Admin } from "./src/models/index.js";
 
 dotenv.config();
 
 const app = express();
+const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: "*",
+    origin: frontendUrl === "*" ? "*" : frontendUrl.split(","),
     methods: ["GET", "POST"]
   }
 });
@@ -184,6 +186,30 @@ const startServer = async () => {
     }
     // Initialize CartItem pricing from legacy field if empty
     await sequelize.query("UPDATE CartItems SET priceAtPurchase = price WHERE priceAtPurchase = 0 AND price IS NOT NULL");
+
+    // 4. Seed Admin if not exists
+    const seedAdmin = async () => {
+      try {
+        const adminEmail = process.env.ADMIN_EMAIL || 'admin@gmail.com';
+        const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@123';
+        
+        const existingAdmin = await Admin.findOne({ where: { email: adminEmail } });
+        if (!existingAdmin) {
+          await Admin.create({
+            name: 'FlashBasket Admin',
+            user_name: 'admin',
+            email: adminEmail,
+            password: adminPassword, // Will be hashed by beforeSave hook
+            role: 'superadmin'
+          });
+          console.log(`✅ Admin user seeded: ${adminEmail}`);
+        }
+      } catch (err) {
+        console.error("❌ Admin seeding error:", err.message);
+      }
+    };
+    await seedAdmin();
+
   } catch (err) {
     console.error("Column check error:", err);
   }
@@ -198,7 +224,7 @@ const startServer = async () => {
 
   // Enable CORS with support for Private Network Access (PNA)
   app.use(cors({
-    origin: '*',
+    origin: frontendUrl === "*" ? "*" : frontendUrl.split(","),
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Access-Control-Allow-Private-Network"],
     credentials: true
@@ -248,8 +274,19 @@ const startServer = async () => {
   });
 
   const PORT = process.env.PORT || 5000;
+  
+  // Validate critical environment variables
+  const requiredEnvVars = ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'JWT_SECRET', 'FRONTEND_URL'];
+  const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+  
+  if (missingEnvVars.length > 0) {
+    console.warn(`\n⚠️  WARNING: Missing recommended environment variables: ${missingEnvVars.join(', ')}`);
+    console.warn(`Current FRONTEND_URL is set to: ${frontendUrl}\n`);
+  }
+
   httpServer.listen(PORT, () => {
     console.log(`✅ Server is running on port ${PORT}`);
+    console.log(`🌐 Accepting requests from: ${frontendUrl}`);
   });
 };
 

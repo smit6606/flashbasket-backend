@@ -49,6 +49,12 @@ export const createProduct = catchAsync(async (req, res) => {
     finalPrice = originalPrice - (originalPrice * discountPercent / 100);
   }
 
+  // Check if seller is suspended
+  const seller = await Seller.findByPk(req.user.id);
+  if (seller.status === 'Suspended') {
+    throw new ApiError(StatusCodes.FORBIDDEN, "Your account is suspended. You cannot add new products.");
+  }
+
   const product = await Product.create({
     ...req.body,
     finalPrice: finalPrice || req.body.price || 0,
@@ -84,7 +90,8 @@ export const getAllProducts = catchAsync(async (req, res) => {
     where['$Category.name$'] = req.query.category;
   }
 
-  where.status = 'active';
+  where.status = 'Active';
+  where['$Seller.status$'] = 'Active';
 
   if (req.query.minPrice || req.query.maxPrice) {
     where.price = {};
@@ -114,7 +121,7 @@ export const getAllProducts = catchAsync(async (req, res) => {
     { model: SubCategory, attributes: ['name'] },
     {
       model: Seller,
-      attributes: ['id', 'shop_name', 'location', 'latitude', 'longitude'],
+      attributes: ['id', 'shop_name', 'location', 'latitude', 'longitude', 'status'],
       where: lat && lng ? sequelize.where(
         sequelize.fn(
           'ST_Distance_Sphere',
@@ -167,7 +174,12 @@ export const getProductById = catchAsync(async (req, res) => {
     include: [
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },
-      { model: Seller, attributes: ['id', 'shop_name', 'address', 'latitude', 'longitude'] }
+      { 
+        model: Seller, 
+        attributes: ['id', 'shop_name', 'address', 'latitude', 'longitude', 'status'],
+        where: { status: 'Active' },
+        required: true
+      }
     ]
   });
 
@@ -192,6 +204,12 @@ export const updateProduct = catchAsync(async (req, res) => {
 
   if (!product) {
     throw new ApiError(StatusCodes.NOT_FOUND, MSG.PRODUCT.NOT_FOUND);
+  }
+
+  // Check if seller is suspended
+  const seller = await Seller.findByPk(req.user.id);
+  if (req.role === 'seller' && seller.status === 'Suspended') {
+    throw new ApiError(StatusCodes.FORBIDDEN, "Your account is suspended. You cannot update products.");
   }
 
   // Permission check
@@ -281,7 +299,8 @@ export const searchProducts = catchAsync(async (req, res) => {
   const search = q || '';
 
   const where = {
-    status: 'active',
+    status: 'Active',
+    '$Seller.status$': 'Active',
     [Op.or]: [
       { productName: { [Op.substring]: search } },
       { description: { [Op.substring]: search } },
@@ -303,7 +322,7 @@ export const searchProducts = catchAsync(async (req, res) => {
     include: [
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },
-      { model: Seller, attributes: ['id', 'shop_name', 'latitude', 'longitude'] }
+      { model: Seller, attributes: ['id', 'shop_name', 'latitude', 'longitude', 'status'] }
     ]
   });
 
@@ -318,8 +337,13 @@ export const searchProducts = catchAsync(async (req, res) => {
  * @desc Get All Products (Admin) with full search/filter
  */
 export const getAdminProducts = catchAsync(async (req, res) => {
-  const { search } = req.query;
+  const { search, sortBy, sortOrder } = req.query;
   const queryOptions = buildQuery(req.query, ['productName', 'description']);
+
+  // Handle Association Sorting
+  if (sortBy === 'seller') {
+    queryOptions.order = [[Seller, 'shop_name', sortOrder ? sortOrder.toUpperCase() : 'DESC']];
+  }
 
   // Ensure 'where' and 'Op.or' are ready for additional search conditions
   if (search) {
@@ -380,11 +404,16 @@ export const getSellerProducts = catchAsync(async (req, res) => {
 export const getProductsByCategory = catchAsync(async (req, res) => {
   const { id } = req.params;
   const products = await Product.findAll({
-    where: { categoryId: id, status: 'active' },
+    where: { categoryId: id, status: 'Active' },
     include: [
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },
-      { model: Seller, attributes: ['id', 'shop_name', 'latitude', 'longitude'] }
+      { 
+        model: Seller, 
+        attributes: ['id', 'shop_name', 'latitude', 'longitude', 'status'],
+        where: { status: 'Active' },
+        required: true
+      }
     ],
     attributes: {
       include: getRatingAttributes()

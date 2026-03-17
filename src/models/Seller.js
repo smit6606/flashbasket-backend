@@ -77,9 +77,9 @@ const Seller = sequelize.define('Seller', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
   },
-  isActive: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true,
+  status: {
+    type: DataTypes.ENUM('Active', 'Suspended'),
+    defaultValue: 'Active',
   },
 }, {
   timestamps: true,

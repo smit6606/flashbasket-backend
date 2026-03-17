@@ -129,10 +129,12 @@ export const login = catchAsync(async (req, res) => {
  */
 export const getProfile = catchAsync(async (req, res) => {
   const user = await authService.findByIdWithoutPassword(req.role, req.user.id);
+  const userResponse = user.toJSON();
+  userResponse.role = req.role;
   return successResponse({
     res,
     message: MSG.USER.PROFILE_FETCHED,
-    data: user
+    data: userResponse
   });
 });
 
@@ -204,11 +206,13 @@ export const updateProfile = catchAsync(async (req, res) => {
   
   // Return without password
   const updatedUser = await authService.findByIdWithoutPassword(req.role, req.user.id);
+  const userResponse = updatedUser.toJSON();
+  userResponse.role = req.role;
 
   return successResponse({
     res,
     message: "Profile updated successfully",
-    data: updatedUser
+    data: userResponse
   });
 });
 

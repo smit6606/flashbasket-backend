@@ -107,11 +107,11 @@ const startServer = async () => {
 
     // Role and Status standardizations for Admin Panel
     const statusConfigs = [
-      { table: 'Users', enum: "'active', 'restricted', 'blocked'", default: "'active'" },
-      { table: 'Sellers', enum: "'pending', 'active', 'suspended', 'rejected'", default: "'pending'" },
-      { table: 'DeliveryPartners', enum: "'pending', 'active', 'suspended'", default: "'pending'" },
-      { table: 'Categories', enum: "'active', 'inactive'", default: "'active'" },
-      { table: 'Products', enum: "'active', 'inactive', 'out-of-stock', 'pending', 'rejected', 'hidden'", default: "'pending'" }
+      { table: 'Users', enum: "'Active', 'Restricted', 'Blocked'", default: "'Active'" },
+      { table: 'Sellers', enum: "'Pending', 'Active', 'Suspended', 'Rejected'", default: "'Pending'" },
+      { table: 'DeliveryPartners', enum: "'Pending', 'Active', 'Suspended'", default: "'Pending'" },
+      { table: 'Categories', enum: "'Active', 'Inactive'", default: "'Active'" },
+      { table: 'Products', enum: "'Active', 'Inactive', 'Out-of-Stock', 'Pending', 'Rejected', 'Hidden'", default: "'Pending'" }
     ];
 
     for (const conf of statusConfigs) {
@@ -127,6 +127,42 @@ const startServer = async () => {
         console.log(`Could not sync status for ${conf.table}:`, err.message);
       }
     }
+
+    // Add visibility columns to Products table
+    const productVisibilityCols = [
+      { name: 'isApproved', type: 'TINYINT(1)', default: '0' },
+      { name: 'isActive', type: 'TINYINT(1)', default: '1' }
+    ];
+    for (const col of productVisibilityCols) {
+      const [res] = await sequelize.query(`SHOW COLUMNS FROM Products LIKE '${col.name}'`);
+      if (res.length === 0) {
+        await sequelize.query(`ALTER TABLE Products ADD COLUMN ${col.name} ${col.type} DEFAULT ${col.default}`);
+      }
+    }
+
+    // Hydrate existing products' visibility
+    await sequelize.query("UPDATE Products SET isApproved = 1 WHERE status IN ('Active', 'active')");
+    await sequelize.query("UPDATE Products SET isActive = 1 WHERE isActive IS NULL");
+
+    // Standardize all statuses in the DB to Capitalized for consistency with model definitions
+    const TablesToUpdate = [
+      { name: 'Users', default: 'Active' },
+      { name: 'Sellers', default: 'Pending' },
+      { name: 'DeliveryPartners', default: 'Pending' },
+      { name: 'Categories', default: 'Active' },
+      { name: 'Products', default: 'Pending' }
+    ];
+
+    for (const table of TablesToUpdate) {
+        await sequelize.query(`UPDATE ${table.name} SET status = 'Active' WHERE status = 'active'`);
+        await sequelize.query(`UPDATE ${table.name} SET status = 'Pending' WHERE status = 'pending'`);
+        await sequelize.query(`UPDATE ${table.name} SET status = 'Suspended' WHERE status = 'suspended'`);
+        await sequelize.query(`UPDATE ${table.name} SET status = 'Rejected' WHERE status = 'rejected'`);
+        await sequelize.query(`UPDATE ${table.name} SET status = 'Inactive' WHERE status = 'inactive'`);
+        await sequelize.query(`UPDATE ${table.name} SET status = 'Hidden' WHERE status = 'hidden'`);
+        await sequelize.query(`UPDATE ${table.name} SET status = 'Out-of-Stock' WHERE status = 'out-of-stock'`);
+    }
+
     // Review Table sync - ensure sellerId exists
     const [revCol] = await sequelize.query("SHOW COLUMNS FROM Reviews LIKE 'sellerId'");
     if (revCol.length === 0) {

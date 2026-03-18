@@ -60,6 +60,14 @@ const Product = sequelize.define('Product', {
     type: DataTypes.ENUM('Active', 'Inactive', 'Out-of-Stock', 'Pending', 'Rejected', 'Hidden'),
     defaultValue: 'Pending',
   },
+  isApproved: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+  },
 }, {
   timestamps: true,
 });

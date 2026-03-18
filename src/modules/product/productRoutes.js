@@ -10,7 +10,7 @@ import {
   deleteProduct,
   getAdminProducts
 } from './productController.js';
-import authMiddleware, { restrictTo } from '../../middlewares/auth.js';
+import authMiddleware, { restrictTo, checkNotSuspended } from '../../middlewares/auth.js';
 import { upload } from '../../middlewares/upload.js';
 
 const router = express.Router();
@@ -24,9 +24,9 @@ router.get('/:id', getProductById);
 
 // Protected routes (Sellers)
 router.use(authMiddleware);
-router.post('/', upload.array('images', 10), createProduct);
-router.patch('/:id', upload.array('images', 10), updateProduct);
-router.delete('/:id', deleteProduct);
+router.post('/', checkNotSuspended, upload.array('images', 10), createProduct);
+router.patch('/:id', checkNotSuspended, upload.array('images', 10), updateProduct);
+router.delete('/:id', checkNotSuspended, deleteProduct);
 router.get('/seller/list', getSellerProducts);
 router.get('/seller', getSellerProducts);
 

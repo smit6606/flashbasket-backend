@@ -19,8 +19,8 @@ const Category = sequelize.define('Category', {
     type: DataTypes.STRING, // URL for fixed professional image
   },
   status: {
-    type: DataTypes.ENUM('active', 'inactive'),
-    defaultValue: 'active',
+    type: DataTypes.ENUM('Active', 'Inactive'),
+    defaultValue: 'Active',
   },
 }, {
   timestamps: true,

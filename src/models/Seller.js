@@ -78,8 +78,8 @@ const Seller = sequelize.define('Seller', {
     defaultValue: false,
   },
   status: {
-    type: DataTypes.ENUM('Active', 'Suspended'),
-    defaultValue: 'Active',
+    type: DataTypes.ENUM('Pending', 'Active', 'Suspended', 'Rejected'),
+    defaultValue: 'Pending',
   },
 }, {
   timestamps: true,

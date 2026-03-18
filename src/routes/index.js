@@ -31,12 +31,11 @@ router.use('/reviews', reviewRoutes);
 router.use('/delivery', deliveryRoutes);
 router.use('/payment', paymentRoutes);
 router.use('/inventory', inventoryRoutes);
-router.use('/favourites', favouriteRoutes);
+router.use('/user/favourites', favouriteRoutes);
 router.use('/addresses', addressRoutes);
 router.use('/coupons', couponRoutes);
 
 // Protected routes section
 // router.use(authMiddleware); 
-// router.use('/user', userRoutes);
 
 export default router;

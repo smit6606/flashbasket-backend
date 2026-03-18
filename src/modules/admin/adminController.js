@@ -68,7 +68,7 @@ export const updateSellerStatus = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { status } = req.body; // 'Active' or 'Suspended'
 
-  const validStatuses = ['Active', 'Suspended'];
+  const validStatuses = ['Pending', 'Active', 'Suspended', 'Rejected'];
   if (!validStatuses.includes(status)) {
     throw new ApiError(StatusCodes.BAD_REQUEST, `Invalid status. Must be one of: ${validStatuses.join(', ')}`);
   }
@@ -346,11 +346,22 @@ export const updateUnifiedUserStatus = catchAsync(async (req, res) => {
     throw new ApiError(StatusCodes.NOT_FOUND, "User not found");
   }
 
-  await record.update({ status });
+  let finalStatus = status;
+  if (status) {
+    const s = status.toLowerCase();
+    if (s === 'active') finalStatus = 'Active';
+    else if (s === 'pending') finalStatus = 'Pending';
+    else if (s === 'suspended') finalStatus = 'Suspended';
+    else if (s === 'rejected') finalStatus = 'Rejected';
+    else if (s === 'restricted') finalStatus = 'Restricted';
+    else if (s === 'blocked') finalStatus = 'Blocked';
+  }
+
+  await record.update({ status: finalStatus });
 
   return successResponse({
     res,
-    message: `${role} status updated to ${status}`,
+    message: `${role} status updated to ${finalStatus}`,
     data: record
   });
 });

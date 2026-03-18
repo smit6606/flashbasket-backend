@@ -55,8 +55,15 @@ export const createProduct = catchAsync(async (req, res) => {
     throw new ApiError(StatusCodes.FORBIDDEN, "Your account is suspended. You cannot add new products.");
   }
 
+  const productData = { ...req.body };
+  
+  // Security: Force non-approved and Pending status for new products
+  productData.isApproved = false;
+  productData.status = 'Pending';
+  productData.isActive = productData.isActive !== undefined ? productData.isActive : true;
+
   const product = await Product.create({
-    ...req.body,
+    ...productData,
     finalPrice: finalPrice || req.body.price || 0,
     price: finalPrice || req.body.price || 0,
     discountAmount: (originalPrice || 0) - (finalPrice || 0),
@@ -91,6 +98,8 @@ export const getAllProducts = catchAsync(async (req, res) => {
   }
 
   where.status = 'Active';
+  where.isApproved = true;
+  where.isActive = true;
   where['$Seller.status$'] = 'Active';
 
   if (req.query.minPrice || req.query.maxPrice) {
@@ -117,7 +126,12 @@ export const getAllProducts = catchAsync(async (req, res) => {
   }
 
   const include = [
-    { model: Category, attributes: ['name'] },
+    { 
+      model: Category, 
+      attributes: ['name', 'status'],
+      where: { status: 'Active' },
+      required: true 
+    },
     { model: SubCategory, attributes: ['name'] },
     {
       model: Seller,
@@ -167,12 +181,18 @@ export const getAllProducts = catchAsync(async (req, res) => {
  */
 export const getProductById = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const product = await Product.findByPk(id, {
+  const product = await Product.findOne({
+    where: { 
+      id, 
+      status: 'Active', 
+      isApproved: true, 
+      isActive: true 
+    },
     attributes: {
       include: getRatingAttributes()
     },
     include: [
-      { model: Category, attributes: ['name'] },
+      { model: Category, attributes: ['name', 'status'], where: { status: 'Active' }, required: true },
       { model: SubCategory, attributes: ['name'] },
       { 
         model: Seller, 
@@ -249,8 +269,25 @@ export const updateProduct = catchAsync(async (req, res) => {
 
   const calculatedDiscountAmount = (originalPrice || product.originalPrice || 0) - (finalPrice !== undefined ? finalPrice : product.finalPrice || 0);
 
+  const updateData = { ...req.body };
+  
+  if (updateData.status) {
+    // Standardize to Capitalized for ENUM consistency
+    const s = updateData.status.toLowerCase();
+    if (s === 'active') updateData.status = 'Active';
+    else if (s === 'pending') updateData.status = 'Pending';
+    else if (s === 'inactive') updateData.status = 'Inactive';
+    else if (s === 'rejected') updateData.status = 'Rejected';
+    else if (s === 'hidden') updateData.status = 'Hidden';
+    else if (s === 'out-of-stock') updateData.status = 'Out-of-Stock';
+
+    if (isAdmin && updateData.status === 'Active') {
+      updateData.isApproved = true;
+    }
+  }
+
   await product.update({
-    ...req.body,
+    ...updateData,
     finalPrice: finalPrice !== undefined ? finalPrice : product.finalPrice,
     price: finalPrice !== undefined ? finalPrice : product.price,
     discountAmount: calculatedDiscountAmount,
@@ -300,6 +337,8 @@ export const searchProducts = catchAsync(async (req, res) => {
 
   const where = {
     status: 'Active',
+    isApproved: true,
+    isActive: true,
     '$Seller.status$': 'Active',
     [Op.or]: [
       { productName: { [Op.substring]: search } },
@@ -404,7 +443,7 @@ export const getSellerProducts = catchAsync(async (req, res) => {
 export const getProductsByCategory = catchAsync(async (req, res) => {
   const { id } = req.params;
   const products = await Product.findAll({
-    where: { categoryId: id, status: 'Active' },
+    where: { categoryId: id, status: 'Active', isApproved: true, isActive: true },
     include: [
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },

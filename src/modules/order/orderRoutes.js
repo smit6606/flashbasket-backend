@@ -10,14 +10,14 @@ import {
   getOrderLogs
 } from './orderController.js';
 import { getUserInvoice, getSellerInvoice } from './invoiceController.js';
-import protect, { restrictTo } from '../../middlewares/auth.js';
+import protect, { restrictTo, checkNotSuspended } from '../../middlewares/auth.js';
 
 const router = express.Router();
 
 router.use(protect);
 
 // User routes
-router.post('/create', restrictTo('user'), placeOrder);
+router.post('/create', restrictTo('user'), checkNotSuspended, placeOrder);
 router.get('/user', restrictTo('user'), getUserOrders);
 router.get('/track/:orderNumber', trackOrder);
 router.get('/:orderId/invoice', getUserInvoice);
@@ -35,7 +35,7 @@ router.get('/partner', restrictTo('delivery'), getPartnerOrders);
 router.post('/:id/resend-otp', restrictTo('delivery'), resendOtp);
 
 // Shared routes
-router.patch('/:id/status', updateOrderStatus);
+router.patch('/:id/status', checkNotSuspended, updateOrderStatus);
 router.get('/:id/logs', getOrderLogs);
 
 export default router;

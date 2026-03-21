@@ -17,8 +17,14 @@ class CartService {
    */
   async addToCart(userId, productId, sellerId, quantity) {
     const cart = await this.getOrCreateCart(userId);
-    const product = await Product.findByPk(productId);
+    const product = await Product.findByPk(productId, {
+        include: [{ model: Seller, attributes: ['status'] }]
+    });
     if (!product) throw new Error('Product not found');
+    
+    if (product.Seller?.status === 'Suspended') {
+        throw new Error('This seller is currently unavailable.');
+    }
 
     // Check if item already exists in cart
     let cartItem = await CartItem.findOne({
@@ -59,7 +65,7 @@ class CartService {
           model: CartItem,
           include: [
             { model: Product, attributes: ['productName', 'images', 'unit', 'price', 'originalPrice', 'discountAmount'] },
-            { model: Seller, attributes: ['shop_name'] }
+            { model: Seller, attributes: ['shop_name', 'status'] }
           ]
         }
       ]
@@ -72,15 +78,21 @@ class CartService {
 
     const items = cart.CartItems.map(item => {
       const product = item.Product;
+      const seller = item.Seller;
       const currentPrice = parseFloat(item.priceAtPurchase || 0);
       const discountAmount = parseFloat(item.discountAmount || 0);
       
+      const isAvailable = seller?.status === 'Active';
       const total = currentPrice * item.quantity;
-      itemTotal += total;
-      totalSavings += (discountAmount * item.quantity);
+      
+      if (isAvailable) {
+          itemTotal += total;
+          totalSavings += (discountAmount * item.quantity);
+      }
 
       return {
         ...item.toJSON(),
+        isAvailable,
         price: currentPrice.toFixed(2),
         itemTotal: total.toFixed(2),
         discountPercent: item.discountPercent,

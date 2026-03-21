@@ -43,25 +43,25 @@ export const notifyOrderStatusChange = async (order) => {
     let partnerMsg = `Assignment updated for order ${orderNum} (Status: ${status}).`;
 
     // Role-specific notification logic
-    if (status === 'awaiting-assignment') {
+    if (status === 'Awaiting-Assignment') {
         adminMsg = `New delivery assignment request for order ${orderNum} from seller.`;
-    } else if (status === 'assigned') {
+    } else if (status === 'Assigned') {
         sellerMsg = `Delivery boy assigned for order ${orderNum}. Waiting for admin to dispatch.`;
-    } else if (status === 'ready-to-ship') {
+    } else if (status === 'Ready-to-Ship') {
         sellerMsg = `Admin has cleared order ${orderNum} for shipping. Please start dispatch.`;
-    } else if (status === 'shipped') {
+    } else if (status === 'Shipped') {
         partnerMsg = `Order ${orderNum} is ready for pick up at the seller's location.`;
-    } else if (status === 'arrived') {
+    } else if (status === 'Arrived') {
         userMsg = `Your delivery verification OTP is ${order.deliveryOtp}. Share this OTP with the delivery partner to receive your order. Note: Valid for 10 minutes.`;
         partnerMsg = `You have arrived at the location for order ${orderNum}. Please verify OTP.`;
-    } else if (status === 'completed') {
+    } else if (status === 'Completed') {
         userMsg = `Order Completed. Enjoy your items!`;
         sellerMsg = `Your order ${orderNum} has been delivered.`;
         adminMsg = `Order ${orderNum} Delivered Successfully.`;
     }
 
     // Notify User only on CRITICAL statuses
-    const criticalStatuses = ['ready-to-ship', 'out-for-delivery', 'arrived', 'completed'];
+    const criticalStatuses = ['Ready-to-Ship', 'Out-for-Delivery', 'Arrived', 'Completed'];
     if (criticalStatuses.includes(status)) {
         await sendNotification(order.userId, 'user', userMsg, 'email');
     }
@@ -80,7 +80,7 @@ export const notifyOrderStatusChange = async (order) => {
     console.log(`[ADMIN NOTIFICATION]: ${adminMsg}`);
 
     // Trigger Invoice Email on completion
-    if (status === 'completed') {
+    if (status === 'Completed') {
         sendInvoiceEmail(order.userId, order.groupId);
     }
 };

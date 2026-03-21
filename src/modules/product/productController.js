@@ -49,8 +49,21 @@ export const createProduct = catchAsync(async (req, res) => {
     finalPrice = originalPrice - (originalPrice * discountPercent / 100);
   }
 
+  // Check if seller is suspended
+  const seller = await Seller.findByPk(req.user.id);
+  if (seller.status === 'Suspended') {
+    throw new ApiError(StatusCodes.FORBIDDEN, "Your account is suspended. You cannot add new products.");
+  }
+
+  const productData = { ...req.body };
+  
+  // Security: Force non-approved and Pending status for new products
+  productData.isApproved = false;
+  productData.status = 'Pending';
+  productData.isActive = productData.isActive !== undefined ? productData.isActive : true;
+
   const product = await Product.create({
-    ...req.body,
+    ...productData,
     finalPrice: finalPrice || req.body.price || 0,
     price: finalPrice || req.body.price || 0,
     discountAmount: (originalPrice || 0) - (finalPrice || 0),
@@ -84,7 +97,10 @@ export const getAllProducts = catchAsync(async (req, res) => {
     where['$Category.name$'] = req.query.category;
   }
 
-  where.status = 'active';
+  where.status = 'Active';
+  where.isApproved = true;
+  where.isActive = true;
+  where['$Seller.status$'] = 'Active';
 
   if (req.query.minPrice || req.query.maxPrice) {
     where.price = {};
@@ -110,11 +126,16 @@ export const getAllProducts = catchAsync(async (req, res) => {
   }
 
   const include = [
-    { model: Category, attributes: ['name'] },
+    { 
+      model: Category, 
+      attributes: ['name', 'status'],
+      where: { status: 'Active' },
+      required: true 
+    },
     { model: SubCategory, attributes: ['name'] },
     {
       model: Seller,
-      attributes: ['id', 'shop_name', 'location', 'latitude', 'longitude'],
+      attributes: ['id', 'shop_name', 'location', 'latitude', 'longitude', 'status'],
       where: lat && lng ? sequelize.where(
         sequelize.fn(
           'ST_Distance_Sphere',
@@ -160,14 +181,25 @@ export const getAllProducts = catchAsync(async (req, res) => {
  */
 export const getProductById = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const product = await Product.findByPk(id, {
+  const product = await Product.findOne({
+    where: { 
+      id, 
+      status: 'Active', 
+      isApproved: true, 
+      isActive: true 
+    },
     attributes: {
       include: getRatingAttributes()
     },
     include: [
-      { model: Category, attributes: ['name'] },
+      { model: Category, attributes: ['name', 'status'], where: { status: 'Active' }, required: true },
       { model: SubCategory, attributes: ['name'] },
-      { model: Seller, attributes: ['id', 'shop_name', 'address', 'latitude', 'longitude'] }
+      { 
+        model: Seller, 
+        attributes: ['id', 'shop_name', 'address', 'latitude', 'longitude', 'status'],
+        where: { status: 'Active' },
+        required: true
+      }
     ]
   });
 
@@ -192,6 +224,12 @@ export const updateProduct = catchAsync(async (req, res) => {
 
   if (!product) {
     throw new ApiError(StatusCodes.NOT_FOUND, MSG.PRODUCT.NOT_FOUND);
+  }
+
+  // Check if seller is suspended
+  const seller = await Seller.findByPk(req.user.id);
+  if (req.role === 'seller' && seller.status === 'Suspended') {
+    throw new ApiError(StatusCodes.FORBIDDEN, "Your account is suspended. You cannot update products.");
   }
 
   // Permission check
@@ -231,8 +269,25 @@ export const updateProduct = catchAsync(async (req, res) => {
 
   const calculatedDiscountAmount = (originalPrice || product.originalPrice || 0) - (finalPrice !== undefined ? finalPrice : product.finalPrice || 0);
 
+  const updateData = { ...req.body };
+  
+  if (updateData.status) {
+    // Standardize to Capitalized for ENUM consistency
+    const s = updateData.status.toLowerCase();
+    if (s === 'active') updateData.status = 'Active';
+    else if (s === 'pending') updateData.status = 'Pending';
+    else if (s === 'inactive') updateData.status = 'Inactive';
+    else if (s === 'rejected') updateData.status = 'Rejected';
+    else if (s === 'hidden') updateData.status = 'Hidden';
+    else if (s === 'out-of-stock') updateData.status = 'Out-of-Stock';
+
+    if (isAdmin && updateData.status === 'Active') {
+      updateData.isApproved = true;
+    }
+  }
+
   await product.update({
-    ...req.body,
+    ...updateData,
     finalPrice: finalPrice !== undefined ? finalPrice : product.finalPrice,
     price: finalPrice !== undefined ? finalPrice : product.price,
     discountAmount: calculatedDiscountAmount,
@@ -281,7 +336,10 @@ export const searchProducts = catchAsync(async (req, res) => {
   const search = q || '';
 
   const where = {
-    status: 'active',
+    status: 'Active',
+    isApproved: true,
+    isActive: true,
+    '$Seller.status$': 'Active',
     [Op.or]: [
       { productName: { [Op.substring]: search } },
       { description: { [Op.substring]: search } },
@@ -303,7 +361,7 @@ export const searchProducts = catchAsync(async (req, res) => {
     include: [
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },
-      { model: Seller, attributes: ['id', 'shop_name', 'latitude', 'longitude'] }
+      { model: Seller, attributes: ['id', 'shop_name', 'latitude', 'longitude', 'status'] }
     ]
   });
 
@@ -318,8 +376,13 @@ export const searchProducts = catchAsync(async (req, res) => {
  * @desc Get All Products (Admin) with full search/filter
  */
 export const getAdminProducts = catchAsync(async (req, res) => {
-  const { search } = req.query;
+  const { search, sortBy, sortOrder } = req.query;
   const queryOptions = buildQuery(req.query, ['productName', 'description']);
+
+  // Handle Association Sorting
+  if (sortBy === 'seller') {
+    queryOptions.order = [[Seller, 'shop_name', sortOrder ? sortOrder.toUpperCase() : 'DESC']];
+  }
 
   // Ensure 'where' and 'Op.or' are ready for additional search conditions
   if (search) {
@@ -380,11 +443,16 @@ export const getSellerProducts = catchAsync(async (req, res) => {
 export const getProductsByCategory = catchAsync(async (req, res) => {
   const { id } = req.params;
   const products = await Product.findAll({
-    where: { categoryId: id, status: 'active' },
+    where: { categoryId: id, status: 'Active', isApproved: true, isActive: true },
     include: [
       { model: Category, attributes: ['name'] },
       { model: SubCategory, attributes: ['name'] },
-      { model: Seller, attributes: ['id', 'shop_name', 'latitude', 'longitude'] }
+      { 
+        model: Seller, 
+        attributes: ['id', 'shop_name', 'latitude', 'longitude', 'status'],
+        where: { status: 'Active' },
+        required: true
+      }
     ],
     attributes: {
       include: getRatingAttributes()

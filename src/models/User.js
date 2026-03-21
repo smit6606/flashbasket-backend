@@ -65,6 +65,10 @@ const User = sequelize.define('User', {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
+  status: {
+    type: DataTypes.ENUM('Active', 'Restricted', 'Blocked'),
+    defaultValue: 'Active',
+  },
 }, {
   timestamps: true,
   hooks: {

@@ -27,6 +27,10 @@ router.get('/users', getAllUsers);
 router.get('/sellers', getAllSellers);
 router.get('/partners', getAllPartners);
 router.get('/orders', getAllOrders);
+router.get('/orders/completed', (req, res, next) => {
+  req.query.status = 'Delivered,Completed';
+  getAllOrders(req, res, next);
+});
 router.get('/commission', getAdminCommissionStats);
 router.put('/assign-delivery', assignDeliveryPartner);
 router.put('/dispatch-order/:orderId', dispatchOrderToSeller);

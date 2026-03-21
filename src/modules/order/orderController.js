@@ -55,8 +55,15 @@ export const placeOrder = catchAsync(async (req, res) => {
   // 2. Resolve items across sellers if stock is insufficient
   const resolvedItems = [];
   for (const item of cart.CartItems) {
-    const originalProduct = await Product.findByPk(item.productId);
+    const originalProduct = await Product.findByPk(item.productId, {
+      include: [{ model: Seller, attributes: ['status', 'shop_name'] }]
+    });
     if (!originalProduct) continue;
+
+    // RULE: Block order if seller is suspended
+    if (originalProduct.Seller?.status === 'Suspended') {
+        throw new ApiError(StatusCodes.BAD_REQUEST, `The seller for '${originalProduct.productName}' is currently unavailable.`);
+    }
 
     let remainingQuantity = item.quantity;
 
@@ -94,8 +101,10 @@ export const placeOrder = catchAsync(async (req, res) => {
           productName: originalProduct.productName,
           stock: { [Op.gt]: 0 },
           id: { [Op.ne]: originalProduct.id },
-          status: 'active'
+          status: 'Active',
+          '$Seller.status$': 'Active'
         },
+        include: [{ model: Seller, attributes: ['status'] }],
         order: [['price', 'ASC']] // Try cheaper alternatives first
       });
 
@@ -231,7 +240,7 @@ export const placeOrder = catchAsync(async (req, res) => {
       // 3.1 Log Initial Status
       await OrderLog.create({
         orderId: order.id,
-        status: 'pending',
+        status: 'Pending',
         message: 'Order placed successfully',
         role: 'user',
         userId: userId
@@ -489,14 +498,22 @@ export const updateOrderStatus = catchAsync(async (req, res) => {
     throw new ApiError(StatusCodes.NOT_FOUND, "Order not found");
   }
 
+  // Check if seller is suspended (if seller is trying to update)
+  if (role === 'seller') {
+      const seller = await Seller.findByPk(user.id);
+      if (seller.status === 'Suspended') {
+          throw new ApiError(StatusCodes.FORBIDDEN, "Your account is suspended. Contact admin.");
+      }
+  }
+
   // Permission & Workflow Logic
   const canUpdate = (reqRole, orderStatus, targetStatus) => {
     // 1. SELLER WORKFLOW
     if (reqRole === 'seller' && order.sellerId === user.id) {
-      if (orderStatus === 'pending' && targetStatus === 'preparing') return true;
-      if (orderStatus === 'preparing' && targetStatus === 'awaiting-assignment') return true;
-      if (orderStatus === 'ready-to-ship' && targetStatus === 'shipped') return true;
-      if (targetStatus === 'cancelled' && orderStatus === 'pending') return true;
+      if (orderStatus === 'Pending' && targetStatus === 'Preparing') return true;
+      if (orderStatus === 'Preparing' && targetStatus === 'Awaiting-Assignment') return true;
+      if (orderStatus === 'Ready-to-Ship' && targetStatus === 'Shipped') return true;
+      if (targetStatus === 'Cancelled' && orderStatus === 'Pending') return true;
       return false;
     }
 
@@ -504,16 +521,16 @@ export const updateOrderStatus = catchAsync(async (req, res) => {
     if (reqRole === 'admin') {
       // Admin handles assign/dispatch via separate endpoints, 
       // but can cancel or override status if needed.
-      if (targetStatus === 'cancelled') return true;
+      if (targetStatus === 'Cancelled') return true;
       return true; // Admin has power
     }
 
     // 3. DELIVERY PARTNER WORKFLOW
     if (reqRole === 'delivery' && order.deliveryPartnerId === user.id) {
-      if (orderStatus === 'assigned' && targetStatus === 'accepted-by-partner') return true;
-      if (orderStatus === 'shipped' && targetStatus === 'out-for-delivery') return true;
-      if (orderStatus === 'out-for-delivery' && targetStatus === 'arrived') return true;
-      if (orderStatus === 'arrived' && targetStatus === 'delivered') {
+      if (orderStatus === 'Assigned' && targetStatus === 'Accepted-By-Partner') return true;
+      if (orderStatus === 'Shipped' && targetStatus === 'Out-for-Delivery') return true;
+      if (orderStatus === 'Out-for-Delivery' && targetStatus === 'Arrived') return true;
+      if (orderStatus === 'Arrived' && targetStatus === 'Delivered') {
         const { otp } = req.body;
         if (!otp) throw new ApiError(StatusCodes.BAD_REQUEST, "OTP is required for delivery");
         
@@ -531,7 +548,7 @@ export const updateOrderStatus = catchAsync(async (req, res) => {
 
     // 4. USER (Customer) - Can only cancel early
     if (reqRole === 'user' && order.userId === user.id) {
-       if (targetStatus === 'cancelled' && ['pending', 'preparing'].includes(orderStatus)) return true;
+       if (targetStatus === 'Cancelled' && ['Pending', 'Preparing'].includes(orderStatus)) return true;
        return false;
     }
 
@@ -545,17 +562,17 @@ export const updateOrderStatus = catchAsync(async (req, res) => {
   // Update logic
   let updateData = { status };
   
-  if (status === 'arrived') {
+  if (status === 'Arrived') {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     updateData.deliveryOtp = otp;
     updateData.otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
     updateData.otpVerified = false;
   }
 
-  if (status === 'delivered') {
+  if (status === 'Delivered') {
     updateData.paymentStatus = 'paid';
     updateData.otpVerified = true;
-    updateData.status = 'completed'; // Auto-advance to completed
+    updateData.status = 'Completed'; // Auto-advance to completed
   }
 
   await order.update(updateData);
@@ -573,7 +590,7 @@ export const updateOrderStatus = catchAsync(async (req, res) => {
   io.emit(`order_update_${order.id}`, { status: order.status, orderId: order.id });
   io.emit(`user_orders_${order.userId}`, { type: 'STATUS_UPDATE', orderId: order.id, status: order.status });
   
-  if (order.status === 'awaiting-assignment') {
+  if (order.status === 'Awaiting-Assignment') {
     io.emit('new_order_broadcast', { city: order.city, orderId: order.id });
   }
 
@@ -604,8 +621,8 @@ export const resendOtp = catchAsync(async (req, res) => {
     throw new ApiError(StatusCodes.FORBIDDEN, "Only the assigned delivery partner can resend OTP");
   }
 
-  if (order.status !== 'arrived') {
-    throw new ApiError(StatusCodes.BAD_REQUEST, "OTP can only be resent when at customer location (arrived status)");
+  if (order.status !== 'Arrived') {
+    throw new ApiError(StatusCodes.BAD_REQUEST, "OTP can only be resent when at customer location (Arrived status)");
   }
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString();

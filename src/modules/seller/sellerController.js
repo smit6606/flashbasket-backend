@@ -107,7 +107,7 @@ export const getSellerDashboardStats = catchAsync(async (req, res) => {
     FROM Products p
     JOIN OrderItems oi ON p.id = oi.ProductId
     JOIN Orders o ON oi.OrderId = o.id
-    WHERE o.sellerId = ${sellerId} AND o.status = 'completed'
+    WHERE o.sellerId = ${sellerId} AND o.status = 'Completed'
     GROUP BY p.id
     ORDER BY totalSold DESC
     LIMIT 5
@@ -118,7 +118,7 @@ export const getSellerDashboardStats = catchAsync(async (req, res) => {
     SELECT p.productName, SUM(COALESCE(oi.quantity, 0)) as totalSold
     FROM Products p
     LEFT JOIN OrderItems oi ON p.id = oi.ProductId
-    LEFT JOIN Orders o ON oi.OrderId = o.id AND o.status = 'completed'
+    LEFT JOIN Orders o ON oi.OrderId = o.id AND o.status = 'Completed'
     WHERE p.sellerId = ${sellerId}
     GROUP BY p.id
     ORDER BY totalSold ASC
@@ -131,7 +131,7 @@ export const getSellerDashboardStats = catchAsync(async (req, res) => {
       DATE_FORMAT(createdAt, '%b') as month,
       SUM(totalAmount) as revenue
     FROM Orders
-    WHERE sellerId = ${sellerId} AND status = 'completed'
+    WHERE sellerId = ${sellerId} AND status = 'Completed'
       AND createdAt >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
     GROUP BY month
     ORDER BY MIN(createdAt) ASC
@@ -140,9 +140,11 @@ export const getSellerDashboardStats = catchAsync(async (req, res) => {
   const activeOrders = await Order.count({
     where: {
       sellerId,
-      status: ['pending', 'preparing', 'out-for-delivery', 'shipped', 'arrived']
+      status: ['Pending', 'Preparing', 'Out-for-Delivery', 'Shipped', 'Arrived']
     }
   });
+
+  const seller = await Seller.findByPk(sellerId, { attributes: ['status'] });
 
   return successResponse({
     res,
@@ -152,7 +154,8 @@ export const getSellerDashboardStats = catchAsync(async (req, res) => {
         totalOrders: parseInt(orderStats?.totalOrders || 0),
         totalRevenue: parseFloat(orderStats?.totalRevenue || 0),
         totalProducts: productCount,
-        activeOrders
+        activeOrders,
+        sellerStatus: seller.status
       },
       charts: {
         topProducts,

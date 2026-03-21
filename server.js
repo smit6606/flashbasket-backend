@@ -9,16 +9,28 @@ import { Order } from "./src/models/index.js";
 import mainRoutes from "./src/routes/index.js";
 import errorMiddleware from "./src/middlewares/errorMiddleware.js";
 import { getDefaultCategoryImage } from "./src/utils/categoryUtils.js";
-import { Category } from "./src/models/index.js";
+import { Category, Admin } from "./src/models/index.js";
 
 dotenv.config();
 
 const app = express();
+const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const isLocal = origin.startsWith('http://localhost:') || 
+                      origin.startsWith('http://127.0.0.1:') ||
+                      origin.startsWith('http://[::1]:');
+      const customOrigins = frontendUrl === "*" ? ["*"] : frontendUrl.split(",").map(url => url.trim());
+      if (isLocal || customOrigins.includes(origin) || customOrigins.includes("*")) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
   }
 });
 
@@ -26,6 +38,61 @@ const io = new Server(httpServer, {
 export { io };
 
 const startServer = async () => {
+  // 1. MUST handle Private Network Access (PNA) preflight BEFORE cors middleware
+  app.use((req, res, next) => {
+    if (req.headers['access-control-request-private-network']) {
+      res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    }
+    // Let the cors middleware handle the rest (including OPTIONS)
+    next();
+  });
+
+  const origins = frontendUrl === "*" ? "*" : frontendUrl.split(",").map(url => url.trim());
+  
+  // Add common localhost variants for better development support
+  if (Array.isArray(origins)) {
+    const localhostVariants = [
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'http://[::1]:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3001',
+    ];
+    
+    // If any localhost variant is already in origins, add the others
+    const hasLocalhost = origins.some(o => localhostVariants.includes(o));
+    if (hasLocalhost || frontendUrl === "http://localhost:3000") {
+      localhostVariants.forEach(v => {
+        if (!origins.includes(v)) origins.push(v);
+      });
+    }
+  }
+
+  app.use(cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl)
+      if (!origin) return callback(null, true);
+      
+      const originsConfigs = frontendUrl === "*" ? ["*"] : frontendUrl.split(",").map(url => url.trim());
+      
+      const isAllowed = originsConfigs.includes(origin) || 
+                        originsConfigs.includes("*") ||
+                        origin.startsWith('http://localhost:') || 
+                        origin.startsWith('http://127.0.0.1:') ||
+                        origin.startsWith('http://[::1]:');
+      
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Access-Control-Allow-Private-Network"],
+    credentials: true,
+    maxAge: 86400
+  }));
+
   await connectDB();
   await sequelize.sync({ alter: false });
 
@@ -196,21 +263,6 @@ const startServer = async () => {
     }
   } catch (err) {}
 
-  // Enable CORS with support for Private Network Access (PNA)
-  app.use(cors({
-    origin: '*',
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Access-Control-Allow-Private-Network"],
-    credentials: true
-  }));
-
-  // Specifically handle the Private Network Access preflight request
-  app.use((req, res, next) => {
-    if (req.headers['access-control-request-private-network']) {
-      res.setHeader('Access-Control-Allow-Private-Network', 'true');
-    }
-    next();
-  });
 
   // Webhook for Stripe - must use raw body
   app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
